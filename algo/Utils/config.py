@@ -22,7 +22,7 @@ class ConfigGlobal(Config):
         self.digits = 3
         self.score_temporel = False
         # configuration de l'arrivée dynamique des requêtes
-    def getEchelle(self):
+    def getScale(self):
         return 10**self.digits
     
     def toDict(self):
@@ -377,7 +377,7 @@ class Config:
         self.declareOption(None,"stable_exp",["BPCCAS"],False,description="Mode stable explication (lent) : rejette un mode avec explication seulement si aucune autre requête mieux classé et non explorée existe.")
         self.declareOption(None,"fails",["BPCCAS"],5,IntDomain(left_bound=1),description="Nombre d'éches consecutifs maximum pour l'appel au solver sur un coeur.")
         self.declareOption(None,"scalls",["BPCCAS"],50,IntDomain(left_bound=1),description="Nombre d'appels au solver maximum sur un coeur.")
-        self.declareOption(None,"solver_PCCAS",["BPCCAS","UPCCAS"],"OPTWGroups",StrDomain(["LKH","OPTW","OPTWGroups"]),description="Solver pour BPCCAS et UPCCAS.")
+        self.declareOption(None,"solver_PCCAS",["BPCCAS","UPCCAS"],"OPTW",StrDomain(["LKH","OPTW","OPTWGroups"]),description="Solver pour BPCCAS et UPCCAS.")
         #LNS
         self.declareOption("k","n_cca",["LNS"],2,IntDomain(left_bound=1),description="Nombre de CCA considérées dans le voisinage (version LNS avec CP).")
         self.declareOption("u","use_solver",["LNS"],False,description="Activer pour activer le solver à chaque insertion temporaire (mode glouton).")
@@ -530,52 +530,43 @@ class Config:
         for opt in self.options:
             if self.donnees.algo_name in self.options[opt].getAlgos():
                 mess += " | " + opt + ' : ' + str(self.options[opt].getValue()) + '\n'
-        
-        mess += " ------------ configuration globale ---------------------\n"
         globDict = self.glob.toDict()
         for key,value in globDict.items():
             mess +=" | " + key + ' : ' + str(value) + '\n'
-        mess += " ------------ infos générale ---------------------------\n"
+       
         for key,value in self.donnees.toDict().items():
             mess += " | " + key + " : " + str(value) + '\n'
         if self.donnees.algo_name == "CPSolver":
-            mess += " ------------ configuration solver global ---------------\n"
+            mess += " ------------ CP configuration ---------------\n"
             dictGlobalSol = self.CPSolver.toDict()
             for key,value in dictGlobalSol.items():
                 mess +=" | " + key + ' : ' + str(value) + '\n'
-        """
-        if self.donnees.algo_name == "cpSolver":
-            dictCp = self.cpSolver.toDict()
-            mess += " ------------ configuration solver iteratif -------------\n"
-            for key,value in dictCp.items():
-                mess +=" | " + key + ' : ' + str(value) + '\n'
-        """
         if self.donnees.algo_name == "LNS":
             dictLNS = self.LNS.toDict()
-            mess += " ------------ configuration LNS -------------------------\n"
+            mess += " ------------ LNS  configuration -------------------------\n"
             for key,value in dictLNS.items():
                 mess +=" | " + key + ' : ' + str(value) + '\n'
         if self.donnees.algo_name == "BPCCAS":
             dictBatch = self.batchProg.toDict()
-            mess += " ------------ configuration BPCCAS ----------------------\n"
+            mess += " ------------ BPCCAS configuration ----------------------\n"
             for key,value in dictBatch.items():
                 mess +=" | " + key + ' : ' + str(value) + '\n'
         if self.donnees.algo_name == 'UPCCAS':
-            mess += " ------------ configuration UPCCAS -----------------------\n"
+            mess += " ------------ UPCCAS configuration -----------------------\n"
             for key,value in self.UPCCAS.toDict().items():
                 mess +=" | " + key + ' : ' + str(value) + '\n'            
         if self.donnees.algo_name in ['BPCCAS','UPPCAS'] or self.donnees.algo_name == 'LNS':
             if self.glob.solver == 'OPTW':
                 dictOPTW = self.OPTW.toDict()
-                mess += " ------------ configuration OPTW --------------------------\n"
+                mess += " ------------ OPTW configuration --------------------------\n"
                 for key,value in dictOPTW.items():
                     mess +=" | " + key + ' : ' + str(value) + '\n'
             else:
                 dictLKH = self.lkh.toDict()
-                mess += " ------------ configuration LKH --------------------------\n"
+                mess += " ------------ LKH configuration --------------------------\n"
                 for key,value in dictLKH.items():
                     mess +=" | " + key + ' : ' + str(value) + '\n'
-        mess += " ------------ modèle de transition --------------------------\n"
+        mess += " ------------ transition model --------------------------\n"
         if self.getOptValue("initTransitionModel")=="fast":
             transitionModel = FastModel
         elif self.getOptValue("initTransitionModel")=="mean":

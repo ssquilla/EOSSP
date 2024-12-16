@@ -163,13 +163,13 @@ class History:
     
     def getInfos(self):
         mess = " ----------- History of the execution ----------\n"
-        lecture = [("chemin",self.path)]
+        lecture = [("path",self.path)]
         for i in range(len(self.commentaires)):
-            lecture.append(("commentaire "+str(i),self.commentaires[i]))
-        lecture += [("algorithme",self.algoName),('instance',self.instance),("nombre de coeurs",self.Ncores)]
-        lecture += [("date de démarrage",self.startDatetime),("date de fin",self.end_datetime)]
+            lecture.append(("comment "+str(i),self.commentaires[i]))
+        lecture += [("algorithm",self.algoName),('instance',self.instance),("number of processes",self.Ncores)]
+        lecture += [("starting date",self.startDatetime),("end date",self.end_datetime)]
         #lecture += [("objective",self.bestObjective),("modes retenus",len(self.bestSelectedModes))]
-        lecture += [("historique",str(len(self.historic)) + " valeurs enregistrées")]
+        lecture += [("history",str(len(self.historic)) + " values registered")]
         for message,contenu in lecture:
             mess += " | "+ message + " : " + str(contenu) +'\n'
         mess += ' '
@@ -186,7 +186,7 @@ class History:
         for s in solCCAs:
             if s not in seq:
                 seq[s] = []
-            ccas = sorted([solCCAs[s][cca] for cca in solCCAs[s]],key=lambda solcca : solcca.getDebut())
+            ccas = sorted([solCCAs[s][cca] for cca in solCCAs[s]],key=lambda solcca : solcca.getStartDate())
             for cca in ccas:
                 seq[s]+=cca.getSequence()
         return seq
@@ -212,7 +212,7 @@ class History:
                 if add is not None:
                     for key in add:
                         if key in sample:
-                            warning("Clé "+str(key) +" déjà présente. Impossible de sauvegarder dans l'échantillon.")
+                            warning("Key "+str(key) +" already existing. Impossible dto save the sample.")
                         else:
                             sample[key] = add[key]
                 pickle.dump(sample, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -235,7 +235,7 @@ class History:
         #for stat in ['cpu succes','cpu echec','cpu ignorés','cpu total']:
         if filtre is None or 'ratio' in filtre:
             self.stats['ratio'] = self.computeMessageRatio()
-            message += "| ratio tps_comm/tps_calcul : " + str(self.stats['ratio']) + '\n'
+            message += "| ratio communication/computation : " + str(self.stats['ratio']) + '\n'
         for stat in []:# envoi reception calcul
             dico[stat] = {}
             for cpu in self.stats[stat]:
@@ -252,18 +252,18 @@ class History:
             message += "| " +str(stat) + " : " + str({'min':mincpu,'mean':meancpu,'max':maxcpu,'std':stdcpu}) + '\n'
 
         if filtre is None or 'best' in filtre:
-            message += "| meilleure solution : " + str(self.bestObjective)  + '\n'
+            message += "| best solution: " + str(self.bestObjective)  + '\n'
 
         if filtre is None or 'repartition' in filtre:
             attente,comm,sans_sol,solver = self.getTimeUsage()
-            message += "| attente : " + str(round(attente,4)) +" %, communication : " +str(round(comm,4))
-            message += " %, calcul hors solver : " + str(round(sans_sol,4)) + " %, calcul solver " + str(round(solver,4)) + " %\n"
+            message += "| waiting : " + str(round(attente,4)) +" %, communication : " +str(round(comm,4))
+            message += " %, computation using the solver: " + str(round(sans_sol,4)) + " %, computation using the solver: " + str(round(solver,4)) + " %\n"
 
         if filtre is None or 'obs' in filtre:
-            message += "| score moyenne des observations : " + str(round(self.meanObservationScore,4)) + '\n'
+            message += "| mean observation score: " + str(round(self.meanObservationScore,4)) + '\n'
         if filtre is None or 'requete' in filtre:
-            message += "| requêtes non planifiées : " + str(self.stats['non planifiées']) + '\n'
-            message += "| requêtes planifiées : " + str(self.stats['planifiées']) + '\n'
+            message += "| unplanned requests: " + str(self.stats['non planifiées']) + '\n'
+            message += "| planned requests: " + str(self.stats['planifiées']) + '\n'
 
         if filtre is None or "size" in filtre:
             message += "| #CCA : " + str(self.stats["#CCA"]) + '\n'
@@ -375,7 +375,7 @@ class History:
     
     def setValidatedRequests(self,constellation,modes_retenus):
         for type_requete in self.stats['planifiées']:
-            nreq = len([r for r in constellation.getToutesRequetes() if constellation.getRequest(r).getType()==type_requete])
+            nreq = len([r for r in constellation.getAllRequests() if constellation.getRequest(r).getType()==type_requete])
             self.stats['non planifiées'][type_requete] = nreq
             self.stats['planifiées'][type_requete] = 0
         for (r,m) in modes_retenus:
@@ -484,9 +484,9 @@ class History:
                 i += 1
                 charge.append(len(self.bestSolution[s][cca].getSequence()))        
         ax.bar(ccas, charge)
-        ax.set_ylabel('composante')
-        ax.set_title('nombre d\'observations')
-        #ax.legend(title='charge des composantes')
+        ax.set_ylabel('component')
+        ax.set_title('number of observations')
+        #ax.legend(title='charge des components')
         instance = self.formatInstance()
         algo = str(config.getOptValue("solver"))
         plt.savefig("../results/charge_cca/charge_"+instance + "_" +algo + "_" +str(MPI.COMM_WORLD.Get_size())+"_proc.png")
@@ -500,24 +500,24 @@ class History:
             self.bestObjective = objective
             #assert(solution is not None)
 
-    def componentsBounds(self,composante):
-        return composante.getDebut(),composante.getFin()
+    def componentsBounds(self,component):
+        return component.getStartDate(),component.getEndDate()
     
     def rejectBestSolution(self):
         self.bestObjective = (0,0)
         self.bestSelectedModes = []
     
     # Event : 0 = rien, 1 = fin itération
-    def updateHistory(self,time,event,objective,solution,modes_retenus,composantes,constellation):
+    def updateHistory(self,time,event,objective,solution,modes_retenus,components,constellation):
         if self.ccas is None:
-            self.ccas = {scca : self.componentsBounds(composantes.getComposanteConnexe(scca)) for scca in composantes.getComposantes()}
+            self.ccas = {scca : self.componentsBounds(components.getConnectedComponent(scca)) for scca in components.getComponents()}
         
         time = min(time,config.getOptValue("time"))
-        self.setRequetesValidees(constellation,modes_retenus)
-        ccas = composantes.getNombreComposantes()
+        self.setValidatedRequests(constellation,modes_retenus)
+        ccas = components.getNumberOfComponents()
         self.meanObservationScore = constellation.meanObservationScore(modes_retenus)
         self.stats['#CCA'] = ccas
-        self.stats["#A"] = composantes.getNombreElements()
+        self.stats["#A"] = components.getNumberOfElements()
         seq = {s : {cca : solution[s][cca].getSequence() for cca in solution[s]} for s in solution}
         if not config.getOptValue("full_sample"):
             self.historic.append((time,event,objective,len(modes_retenus),ccas,MPI.COMM_WORLD.Get_rank(),None,None))

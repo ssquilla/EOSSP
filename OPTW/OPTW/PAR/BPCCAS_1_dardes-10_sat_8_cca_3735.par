@@ -1,0 +1,7 @@
+SPECIAL
+PROBLEM_FILE = INSTANCES/eosm/BPCCAS_1_dardes-10_sat_8_cca_3735.tsptw
+MAX_TRIALS = 3
+RUNS = 3
+TRACE_LEVEL = 0
+OUTPUT_TOUR_FILE = TOURS/eosm/BPCCAS_1_dardes-10_sat_8_cca_3735.tour
+INITIAL_TOUR_FILE = INIT/BPCCAS_1_dardes-10_sat_8_cca_3735.init

@@ -1511,8 +1511,8 @@ class Activity:
         if s!=self.satId:
             return False
         other = constellation.satellites[self.satId].getActivity(a)
-        left = other.getStartDate() <= self.getStartDate() and other.getEndDate() + constellation.satellites[s].getTransition(self.id,a) <= self.getStartDate()
-        right = self.getStartDate() <= other.getStartDate() and self.getEndDate() + constellation.satellites[s].getTransition(a,self.id) <= other.getStartDate()
+        left = other.getStartDate() <= self.getStartDate() and other.getEndDate() + constellation.satellites[s].getTransitionDuration(self.id,a) <= self.getStartDate()
+        right = self.getStartDate() <= other.getStartDate() and self.getEndDate() + constellation.satellites[s].getTransitionDuration(a,self.id) <= other.getStartDate()
         return not(left or right)
     
     def distance(self,s,a2,constellation):
@@ -1636,16 +1636,16 @@ class Satellite:
     def getDownloads(self):
         return self.downloads
     
-    def getTransition(self,a1,a2,modeleDeTransition):
-        assert(not modeleDeTransition.estTimeDependent())
-        res = modeleDeTransition.getTransition(self,a1,a2,config.glob.digits)
+    def getTransitionDuration(self,a1,a2,transitionModel):
+        assert(not transitionModel.isTimeDependent())
+        res = transitionModel.getTransitionDuration(self,a1,a2,config.glob.digits)
         return res
     
-    def getTransitionTimeDependent(self,a1,a2,startManeuveringDate,modeleDeTransition):
-        if modeleDeTransition.estTimeDependent():
-            return modeleDeTransition.getTransition(a1,a2,startManeuveringDate)
+    def getTransitionDurationTimeDependent(self,a1,a2,startManeuveringDate,transitionModel):
+        if transitionModel.isTimeDependent():
+            return transitionModel.getTransitionDuration(a1,a2,startManeuveringDate)
         else:
-            return modeleDeTransition.getTransition(self,a1,a2)
+            return transitionModel.getTransitionDuration(self,a1,a2,config.glob.digits)
 
 class Constellation:
 
@@ -1791,7 +1791,7 @@ class Constellation:
         config.donnees.no = no
         return satellitesObservations
     
-    def filterPresentModes(self,solution,graphDep,modeleDeTransition):
+    def filterPresentModes(self,solution,graphDep,transitionModel):
         contenu_modes = {}
         modes = []
         
@@ -1814,7 +1814,7 @@ class Constellation:
                     else:        
                         for a in contenu_modes[r]:
                             (s,cca) = graphDep.getActivityCCA(a)
-                            solution.getSolCCA(s,cca).removeActivity(self,a,modeleDeTransition)
+                            solution.getSolCCA(s,cca).removeActivity(self,a,transitionModel)
             else:
                 modes.append((r,0))
         solution.setModesRetenus(modes,self)
@@ -1841,7 +1841,7 @@ class Constellation:
         
         if config.getOptValue("verif"):
             for r in self.getRequests():
-                activities = self.extraireActivitiesRequetes()
+                activities = self.extractActivitiesFromRequests()
                 for s in activities:
                     for a in activities[s]:
                         assert(s==self.getSatelliteActivity(a))

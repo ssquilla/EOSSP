@@ -13,45 +13,44 @@ config = Config()
 instance = config.instance
 
 
-class Messagerie:
+class Communication:
     def __init__(self):
         # eviter d'envoyer les informations qu'on va recuperer à l'identique ensuite
-        self.local_data = {}
+        self.localData = {}
     
-    def envoyerMessage(self,data,cpu):
+    def sendMessages(self,data,cpu):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         assert(rank==0)
         data['time']=time()
         data['cpu'] = rank
-        #self.extraireDonneesRedondantes(data,cpu)
         comm.send(data, dest=cpu, tag=rank)
     
-    def extraireDonneesRedondantes(self,data,cpu):
+    def extractDuplicatedData(self,data,cpu):
         # {'mode':mode,'cca':cca,'source':rank,'activites':activites,'time':time()}
-        id_cca = data['cca'].getIdentifiant()
-        self.local_data[cpu] = {}
-        self.local_data[cpu]['sequence'] = data['cca'].getSequence().copy()
-        self.local_data[cpu]["mode"] = data['mode']
-        self.local_data[cpu]['activites'] = data['activites']
-        self.local_data[cpu]['cca'] = id_cca
+        idCCA = data['cca'].getIdentifiant()
+        self.localData[cpu] = {}
+        self.localData[cpu]['sequence'] = data['cca'].getSequence().copy()
+        self.localData[cpu]["mode"] = data['mode']
+        self.localData[cpu]['activites'] = data['activites']
+        self.localData[cpu]['cca'] = idCCA
         del data['mode']
-        data['cca'] = id_cca
+        data['cca'] = idCCA
         
-    def reformerDonnees(self,data):
+    def reformatData(self,data):
         source = data['source']
-        data['cca'] = self.local_data[source]['cca']
-        data['mode'] = self.local_data[source]['mode']
-        data['sequence'] = self.local_data[source]['sequence']
-        data['explication'] = self.local_data[source]['activites']
+        data['cca'] = self.localData[source]['cca']
+        data['mode'] = self.localData[source]['mode']
+        data['sequence'] = self.localData[source]['sequence']
+        data['explication'] = self.localData[source]['activites']
         if data['faisable']:
             data['sequence'] += data['explication']
                 
-class MessagerieBloquante(Messagerie):
+class BlockingCommunication(Communication):
     def __init__(self):
         pass
     
-    def posterMessage(self,data):
+    def postMessage(self,data):
         assert(MPI.COMM_WORLD.Get_rank()>0)
         MPI.COMM_WORLD.send(data,dest=0)
         
@@ -59,11 +58,10 @@ class MessagerieBloquante(Messagerie):
         assert(MPI.COMM_WORLD.Get_rank()==0)
         for i in range(MPI.COMM_WORLD.Get_size()-1):
             data = MPI.COMM_WORLD.recv()
-            #data['reception'] = (data['reception'],time()-data['reception'])
             yield data
     
     def __str__(self):
-        return "Messagerie bloquante"
+        return "Blocking communication"
         
         
         

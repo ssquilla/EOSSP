@@ -42,7 +42,7 @@ class Solver:
             return self.solCCAs
         
         def updateObjective(self,constellation):
-            self.objective = sum([constellation.getRequest(r).getMode(m).getUtility() for (r,m) in self.selectedModes]),sum([constellation.getRequest(r).getMode(m).getScoreTemporel() for (r,m) in self.selectedModes])
+            self.objective = sum([constellation.getRequest(r).getMode(m).getUtility() for (r,m) in self.selectedModes]),sum([constellation.getRequest(r).getMode(m).getTemporalUtility() for (r,m) in self.selectedModes])
             
         def replaceMode(self,r,m,constellation):
             for i,(rr,mm) in enumerate(self.selectedModes):
@@ -148,11 +148,11 @@ class Solver:
     
     def computeCriticalPlans(self,constellation,id_cca,force=False,print_info=False):
         s,cca = id_cca
-        if not self.getSolCCA(s,cca).plansAJour() or force:
+        if not self.getSolCCA(s,cca).arePlansUpToDate() or force:
             self.getSolCCA(s,cca).updateCriticalPlans(constellation,self.transitionModel,force=force)
         assert(len(self.getSolCCA(s,cca).getSequence())==len(self.getSolCCA(s,cca).planEst))
         if self.transitionModel.isTimeDependent():
-            if not(self.getSolCCA(s,cca).plansAJour()):
+            if not(self.getSolCCA(s,cca).arePlansUpToDate()):
                 raise OutdatedCriticalPlans
         
     def updateCriticalPlansSolution(self,constellation,force=False,print_info=False):
@@ -533,9 +533,9 @@ class Solver:
                 duration = constellation.getSatellite(s).getActivity(prec).getDuration()
                 start = constellation.getSatellite(s).getActivity(activity).getStartDate()
                 if transitionModel is None:
-                    transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,transitionModel)
                 t = max(t + duration + transition,start)
             plan.append((activity,t))
         return plan
@@ -552,9 +552,9 @@ class Solver:
                     duration = constellation.getSatellite(s).getActivity(prec).getDuration()
                     start = constellation.getSatellite(s).getActivity(activity).getStartDate()
                     if transitionModel is None:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,transitionModel)
                     t = max(t + duration + transition,start)
                 self.plan[s].append((activity,t))
                 
@@ -570,7 +570,7 @@ class Solver:
                     t = constellation.getSatellite(s).getActivity(activity).getEndDate() - duration
                 else:
                     suivante = solution[s][i+1]
-                    transition = self.getTransition(constellation,s,a,suivante,t+duration,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,a,suivante,t+duration,self.transitionModel)
                     die("TO DO")
                     t = min(t - duration - transition,constellation.getSatellite(s).getActivity(activity).getEndDate())
                 self.plan[s].append((a,t))
@@ -593,9 +593,9 @@ class Solver:
                     duration = constellation.getSatellite(s).getActivity(prec).getDuration()
                     start = constellation.getSatellite(s).getActivity(activity).getStartDate()
                     if transitionModel is None:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,transitionModel)
                     t = max(t + duration + transition,start)
                 pi_obs = max(0,t+duration-self.constellation.getSatellite(s).getActivity(a).getEndDate())
                 pi += pi_obs
@@ -617,9 +617,9 @@ class Solver:
                 else:
                     prec = solution[s][i-1]
                     if transitionModel is None:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                        transition = self.getTransitionDuration(constellation,s,prec,activity,t+duration,transitionModel)
                     t = max(t + duration + transition,start)
                 right = max(0,t-start)
                 left = max(0,t+duration-constellation.getSatellite(s).getActivity(activity).getEndDate())
@@ -635,7 +635,7 @@ class Solver:
                         duration = self.constellation.getSatellite(s).getObservation(p).getDuration()
                     else:
                         duration = self.constellation.getSatellite(s).getDownload(p).getDuration()
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duree,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,p,self.plan[s][i+1][0],t+duree,self.transitionModel)
                     if(t+transition+duration >self.plan[s][i+1][1] + 1e-5):
                         return False
                     if(t+duration>self.constellation.getSatellite(s).getActivity(p).getEndDate()):
@@ -652,18 +652,18 @@ class Solver:
                 duration = constellation.getSatellite(s).getActivity(predecessor).getDuration()
                 start = constellation.getSatellite(s).getActivity(activity).getStartDate()
                 if transitionModel is None:
-                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,predecessor,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,predecessor,activity,t+duration,transitionModel)
                 t = max(t + duration + transition,start)
             plan.append((activity,t))
         return plan
     
-    def getTransition(self,constellation,s,a1,a2,start,transitionModel):
+    def getTransitionDuration(self,constellation,s,a1,a2,start,transitionModel):
         if transitionModel.isTimeDependent():
             transition = constellation.getSatellite(s).getTransitionTimeDependent(a1,a2,start,transitionModel)
         else:
-            transition = constellation.getSatellite(s).getTransition(a1,a2,transitionModel)                    
+            transition = constellation.getSatellite(s).getTransitionDuration(a1,a2,transitionModel)                    
         return transition
         
     def isTemporallyFeasibleSequence(self,constellation,sequence,s,transitionModel=None):
@@ -675,9 +675,9 @@ class Solver:
                 duration = constellation.getSatellite(s).getActivity(predecessor).getDuration()
                 start = constellation.getSatellite(s).getActivity(activity).getStartDate()
                 if transitionModel is None:
-                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,predecessor,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,predecessor,activity,t+duration,transitionModel)
                 t = max(t + duration + transition,start)
                 if t+constellation.getSatellite(s).getActivity(activity).getDuration() > constellation.getSatellite(s).getActivity(activity).getEndDate():
                     return False
@@ -727,11 +727,11 @@ class Solver:
             for text in add:
                 printColor("| "+str(text)+" : " + str(add[text]),c=color)
             if filtre is None or 'time' in filtre:
-                printColor("| temps écoulé : ",(temps-startDate)//60,"minutes",(temps-startDate)%60,c=color)
+                printColor("| time elapsed: ",(temps-startDate)//60,"minutes",(temps-startDate)%60,c=color)
             if filtre is None or 'obj' in filtre:
-                printColor("| objective : ",self.getObjective(),c=color)
+                printColor("| objective: ",self.getObjective(),c=color)
             if filtre is None or "modes" in filtre:
-                printColor("| modes retenus : ",len(self.solution.selectedModes),c=color)
+                printColor("| selected modes: ",len(self.solution.selectedModes),c=color)
             lines = str(self.solution.history).split('\n')
             for line in lines:
                 if len(line)>0:
@@ -772,7 +772,7 @@ class Solver:
         
         return removals,prevalidations,intersectionWorking
 
-    def terminateProcessus(self):
+    def terminateProcess(self):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()
@@ -796,7 +796,7 @@ class Solver:
         return freeCPUs.pop()
     
     def noiseUtility(self,constellation,r,m):
-        return (constellation.getRequest(r).getMode(m).getUtility() + self.requestNoise[r],constellation.getRequest(r).getMode(m).getScoreTemporel())
+        return (constellation.getRequest(r).getMode(m).getUtility() + self.requestNoise[r],constellation.getRequest(r).getMode(m).getTemporalUtility())
     
     def mappingCCACurrentObservations(self,constellation,failed):
         mappingObservations = {}
@@ -872,7 +872,7 @@ class Solver:
                 ax.add_patch(patches.Rectangle((t,s-1/2),duration,1,color=color,fill=True,label=lab))
                 
                 if i<len(self.plan[s])-1:
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duration,self.transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,p,self.plan[s][i+1][0],t+duration,self.transitionModel)
                     ax.add_patch(patches.Rectangle((t+duration,s-1/2),transition,1,color=colorTrans,fill=True,label='transition'))
                 if(annotate):
                     ax.annotate('{}'.format(self.sol[s][i][0]),xy=(self.sol[s][i][1], s),xytext=(0, 3),textcoords="offset points",ha='center', va='bottom',color='k')           
@@ -992,7 +992,7 @@ class Solver:
     def verifyCCAs(self,constellation):
         for s in self.getSolCCAs():
             for cca in self.getSolCCAs()[s]:
-                faisable = self.getSolCCA(s,cca).sequenceFaisable(constellation,self.transitionModel)
+                faisable = self.getSolCCA(s,cca).isSequenceFeasible(constellation,self.transitionModel)
                 if not faisable:
                     die('infeasible CCA',self.getSolCCA(s,cca),"tardiness=",self.getSolCCA(s,cca).retardSequence(constellation,self.getSolCCA(s,cca).sequence,self.transitionModel))
                 
@@ -1013,7 +1013,7 @@ class Solver:
             for i,(p,t) in enumerate(self.plan[s]):
                 if(i<len(self.plan[s])-1):
                     duration = constellation.getSatellite(s).getActivity(p).getDuration()
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duration,transitionModel)
+                    transition = self.getTransitionDuration(constellation,s,p,self.plan[s][i+1][0],t+duration,transitionModel)
                     transitions.append(transition)
                     if(t+transition+duration >self.plan[s][i+1][1] + 1e-5):
                         raise ValueError('transition finishing after next observation start date')
@@ -1033,9 +1033,9 @@ class Solver:
         
     def verifySolutionIfVerifyMode(self,constellation,transitionModel=None):
         if config.getOptValue("verif"):
-            self.verifierSolution(constellation,transitionModel=transitionModel)
+            self.verifySolution(constellation,transitionModel=transitionModel)
         
-    def verifierSolution(self,constellation,transitionModel=None):
+    def verifySolution(self,constellation,transitionModel=None):
         self.buildPlan(constellation,transitionModel=transitionModel)
         self.verifyActiveRequests(constellation)
         self.verifyModes(constellation)

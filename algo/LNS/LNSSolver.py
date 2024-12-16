@@ -28,560 +28,530 @@ else:
     
     class LNS(Solver):
         
-        class HeuristiqueActivites:
+        class ActivitiesHeuristic:
             def __init__(self,nom):
                 self.nom = nom
             
-            def choisirActivite(self,constellation,r,activites_a_inserer):
-                raise ValueError('classe abstraite')
+            def pickActivity(self,constellation,r,activitiesToInsert):
+                raise ValueError('abstract class')
         
-        class HeuristiqueRatio(HeuristiqueActivites):
+        class RatioHeuristic(ActivitiesHeuristic):
             def __init__(self,nom,alpha):
                 super().__init__(nom)
                 self.alpha = alpha
                 
-            def scoreEnsembleActivites(self,LNSsolver,constellation,r,activites_a_inserer,cheap=False):        
+            def scoreActivitySet(self,LNSsolver,constellation,r,activitiesToInsert,cheap=False):        
                 #printOpen("Scoring des activités",c='b')
-                timeSlots = {a : constellation.getRequete(r).getTimeSlot(a) for a in activites_a_inserer}
-                listeObs = [constellation.getRequete(r).findActivite(a) for a in activites_a_inserer]
-                recompense,score_temp = constellation.getRequete(r).scoreListeObservations(listeObs,constellation,timeSlots)
-                duree = sum([constellation.getSatellite(constellation.getSatelliteActivite(a)).getActivite(a).getDuree() for a in activites_a_inserer])
+                timeSlots = {a : constellation.getRequest(r).getTimeSlot(a) for a in activitiesToInsert}
+                listeObs = [constellation.getRequest(r).findActivite(a) for a in activitiesToInsert]
+                reward,temporalScore = constellation.getRequest(r).scoreObservationsList(listeObs,constellation,timeSlots)
+                duration = sum([constellation.getSatellite(constellation.getSatelliteActivity(a)).getActivity(a).getDuration() for a in activitiesToInsert])
                 if not cheap and self.alpha!=0:
-                    trans = LNSsolver.etatRequetes[r].diffCoutTransition(LNSsolver,constellation,activites_a_inserer)
+                    trans = LNSsolver.requestState[r].diffTransitionCost(LNSsolver,constellation,activitiesToInsert)
                 else:
                     trans = 0
-                """
-                if not cheap:
-                    retard = LNSsolver.etatRequetes[r].retard(constellation,activites_a_inserer)
-                else:
-                    retard = 0
-                """
-                res = (recompense,score_temp,duree+trans)
-                return self.aggregerNoeud(res)
+                res = (reward,temporalScore,duration+trans)
+                return self.aggregateNodes(res)
             
-            def aggregerNoeud(self,lambda_v):
+            def aggregateNodes(self,lambda_v):
                 return lambda_v[0]/(1+lambda_v[2])**self.alpha
                     
-        class EtatRequete:
+        class RequestState:
             def __init__(self,LNS,constellation,r):
-                self.explications = []
-                self.inactifs = []
+                self.explainations = []
+                self.inactives = []
                 self.r = r
-                #self.score_courant = {}
-                #self.mode_courant
-                id_mpi = MPI.COMM_WORLD.Get_rank()
-                seed_option = config.getOptValue("seed")
-                self.randominitInsertTmp = rd.Random(id_mpi+seed_option)
-                self.initRechercheMode(LNS,constellation)
-            def diffCoutTransition(self,LNS,constellation,activites_a_inserer):
+                idMPI = MPI.COMM_WORLD.Get_rank()
+                configuredSeed = config.getOptValue("seed")
+                self.randominitInsertTmp = rd.Random(idMPI+configuredSeed)
+                self.initModeResearch(LNS,constellation)
+            def diffTransitionCost(self,LNS,constellation,activitiesToInsert):
                 cout = 0
-                for id_cca in self.tmp[activites_a_inserer]:
-                    s = id_cca[0]
-                    cout += (self.tmp[activites_a_inserer][id_cca].coutTransitionComposante(constellation) - LNS.getSolCCA(s,cca).coutTransitionComposante(constellation))
+                for idCCA in self.tmp[activitiesToInsert]:
+                    s = idCCA[0]
+                    cout += (self.tmp[activitiesToInsert][idCCA].getTotalTransitionCostOfComponent(constellation) - LNS.getSolCCA(s,cca).getTotalTransitionCostOfComponent(constellation))
                 return cout
-            def getIdRequete(self):
+            def getIdRequest(self):
                 return self.r            
-            def initRechercheMode(self,LNS,constellation):
+            def initModeResearch(self,LNS,constellation):
                 self.tmp = {} # les solutions temporaires des cca
                 r = self.r
-                self.inactifs = []
-                self.activites_faisables = {}
+                self.inactives = []
+                self.feasibleActivities = {}
                 # trouver le meilleur mode privé des activités inactives
-                mode = constellation.getRequete(r).getBestModeWithoutInactives(constellation,self.inactifs)
+                mode = constellation.getRequest(r).getBestModeWithoutInactives(constellation,self.inactives)
                 if mode is not None:
-                    self.score_courant = mode.getRecompense()
+                    self.currentScore = mode.getUtility()
                 else:
-                    self.score_courant = 0
-                return self.inactifs
-            def getScoreCourant(self):
-                return self.score_courant
+                    self.currentScore = 0
+                return self.inactives
+            def getCurrentScore(self):
+                return self.currentScore
             
-            def getActiviteByCCA(self,activites,LNS):
-                act_by_cca = {}
+            def getActivityByCCA(self,activites,LNS):
+                activityByCCA = {}
                 for (s,a) in activites:
-                    id_cca = LNS.grapheDependances.getActiviteCCA(a)
-                    if id_cca not in act_by_cca:
-                        act_by_cca[id_cca] = []
-                    act_by_cca[id_cca].append(a)
-                for id_cca in act_by_cca:
-                    act_by_cca[id_cca] = tuple(act_by_cca[id_cca])
-                return act_by_cca
+                    idCCA = LNS.getGraphComponents().getActivityCCA(a)
+                    if idCCA not in activityByCCA:
+                        activityByCCA[idCCA] = []
+                    activityByCCA[idCCA].append(a)
+                for idCCA in activityByCCA:
+                    activityByCCA[idCCA] = tuple(activityByCCA[idCCA])
+                return activityByCCA
                 
-            def tenterInsererRequete(self,LNS,constellation,r,forbid_solver,modeleDeTransition):
+            def tryInsertRequest(self,LNS,constellation,r,forbidSolver,transitionModel):
                 #shiftRightDisplay(1)
                 self.solution = {}
-                #print(r,sorted(self.inactifs))
-                mode = constellation.getRequete(r).getBestModeWithoutInactives(constellation,self.inactifs)
+                #print(r,sorted(self.inactives))
+                mode = constellation.getRequest(r).getBestModeWithoutInactives(constellation,self.inactives)
                 if mode is None:
                     printColor("Requete "+str(self.r) +" : aucun mode candidat trouvé",c='r')
                     return None,None,True  
-                self.score_courant = mode.getRecompense()
-                return self.tenterInsererMode(LNS,constellation,r,mode,forbid_solver,modeleDeTransition)
+                self.currentScore = mode.getUtility()
+                return self.tryInsertMode(LNS,constellation,r,mode,forbidSolver,transitionModel)
             
-            def sauvegarderEtatActivites(self):
-                self.copie_inactifs = copy(self.inactifs)
-                self.copie_activites_faisables = copy(self.activites_faisables)
+            def saveActivitiesState(self):
+                self.inactivesCopy = copy(self.inactives)
+                self.feasibleActivitiesCopy = copy(self.feasibleActivities)
             
-            def restaurerEtatActivites(self):
-                self.inactifs = self.copie_inactifs
+            def restoreActivitiesState(self):
+                self.inactives = self.inactivesCopy
                 supp = []
-                for a in self.activites_faisables:
-                    if not self.activites_faisables[a]:
-                        if a not in self.copie_activites_faisables or self.copie_activites_faisables[a]:
+                for a in self.feasibleActivities:
+                    if not self.feasibleActivities[a]:
+                        if a not in self.feasibleActivitiesCopy or self.feasibleActivitiesCopy[a]:
                             supp.append(a)
                 for a in supp:
-                    del self.activites_faisables[a]
+                    del self.feasibleActivities[a]
                     del self.tmp[a]
             
-            def tenterInsererMode(self,LNS,constellation,r,mode,forbid_solver,modeleDeTransition):
+            def tryInsertMode(self,LNS,constellation,r,mode,forbidSolver,transitionModel):
                 #shiftRightDisplay(1)
                 self.solution = {}
                 if mode is None:
-                    printColor("Requete "+str(self.r) +" : aucun chemin trouvé",c='r')
+                    printColor("Request "+str(self.r) +": no path found",c='r')
                     return None,None,True  
-                self.score_courant = mode.getRecompense()
+                self.currentScore = mode.getUtility()
                 realisable = True
                 #shiftRightDisplay(2)
-                printOpen("Test de faisabilité du chemin (+ évaluation précise des scores)")
-                act_cca = self.getActiviteByCCA(mode.getCouples(),LNS)
-                for id_cca in act_cca:
-                    faisable = self.testFaisabilite(constellation,LNS,r,act_cca[id_cca],id_cca,forbid_solver,modeleDeTransition)
+                printOpen("Testing path feasibility (+ precise score evaluation)")
+                activityCCA = self.getActivityByCCA(mode.getPairs(),LNS)
+                for idCCA in activityCCA:
+                    faisable = self.testFeasibility(constellation,LNS,r,activityCCA[idCCA],idCCA,forbidSolver,transitionModel)
                     if not faisable:
                         realisable = False
-                        self.inactifs+=list(act_cca[id_cca])
-                        self.activites_faisables[act_cca[id_cca]] = False
-                        printColor("Requete "+str(self.r) +" : mode infaisable",c='r')
+                        self.inactives+=list(activityCCA[idCCA])
+                        self.feasibleActivities[activityCCA[idCCA]] = False
+                        printColor("Request "+str(self.r) +": infeasible mode",c='r')
                         printClose()
                         return None,None,False
                 printClose()
                 assert(realisable)
                 if config.verifMode():
-                    for id_cca in act_cca:
-                        s,cca = id_cca
-                        assert(LNS.getSolCCA(s,cca).sequenceFaisable(constellation,modeleDeTransition))
-                printColor("Requete "+str(self.r) +" mode faisable : ",mode,c='g')
-                mode = constellation.getRequete(r).validerModeCandidat(constellation)
-                """
-                doublons = self.doublonsCCAs(noeuds)
-                if len(doublons)>0:
-                    warn("Plusieurs noeuds sur la même CCA : ",doublons)
-                """
-                for id_cca in act_cca:
-                    CCAS = list(self.tmp[act_cca[id_cca]].keys())
+                    for idCCA in activityCCA:
+                        s,cca = idCCA
+                        assert(LNS.getSolCCA(s,cca).isSequenceFeasible(constellation,transitionModel))
+                printColor("Request "+str(self.r) +" feasible mode: ",mode,c='g')
+                mode = constellation.getRequest(r).validateCandidateMode(constellation)
+
+                for idCCA in activityCCA:
+                    CCAS = list(self.tmp[activityCCA[idCCA]].keys())
                     assert(len(CCAS)==1)
-                    if id_cca in self.solution:
-                        die("CCA déjà présente",id_cca)
-                    self.solution[id_cca] = self.tmp[act_cca[id_cca]][id_cca]
+                    if idCCA in self.solution:
+                        die("CCA already present",idCCA)
+                    self.solution[idCCA] = self.tmp[activityCCA[idCCA]][idCCA]
                 return mode,self.solution,False    
     
-            def doublonsCCAs(self,noeuds):
+            def duplicatedCCA(self,noeuds):
                 doublons = []
                 CCAs = [list(self.tmp[x].keys()) for x in noeuds]
-                for cca_liste in CCAs:
-                    if not(len(cca_liste)==1):
-                        print(cca_liste,CCAs)
+                for CCAList in CCAs:
+                    if not(len(CCAList)==1):
+                        print(CCAList,CCAs)
                 for i,cca1 in enumerate(CCAs):
                     for j,cca2 in enumerate(CCAs):
                         if i!=j and cca1==cca2 and cca1[0] not in doublons:
                             doublons.append(cca1[0])
                 return doublons
             
-            def testFaisabilite(self,constellation,LNS,r,X,id_cca,forbid_solver,modeleDeTransition):
-                if X not in self.activites_faisables:
+            def testFeasibility(self,constellation,LNS,r,X,idCCA,forbidSolver,transitionModel):
+                if X not in self.feasibleActivities:
                         assert(X not in self.tmp)
-                        self.activites_faisables[X] = self.insertionTemporaire(LNS,constellation,r,X,forbid_solver,modeleDeTransition)
+                        self.feasibleActivities[X] = self.temporaryInsertion(LNS,constellation,r,X,forbidSolver,transitionModel)
                         assert(X in self.tmp)
-                        for a in self.tmp[X][id_cca].sequence:
-                            if not LNS.grapheDependances.getActiviteCCA(a)==id_cca:
-                                print(X,id_cca,self.tmp[X][id_cca].sequence,a,"coeur",MPI.COMM_WORLD.Get_rank())
-                            assert(LNS.grapheDependances.getActiviteCCA(a)==id_cca)
-                return self.activites_faisables[X]
-            def checkActivitesCCA(self,LNS,activites_a_inserer):
-                cca_activites = {}
-                for a in activites_a_inserer:
-                    id_cca = LNS.grapheDependances.getActiviteCCA(a)
-                    if id_cca not in cca_activites:
-                        cca_activites[id_cca] = []
-                    cca_activites[id_cca].append(a)
-                id_cca = list(cca_activites.keys())[0]
-                assert(len(cca_activites)<=1)
-                return cca_activites,id_cca
-            def initInsertionTemporaire(self,LNS,constellation,r,activites_a_inserer):
-                self.tmp[activites_a_inserer] = {}
-                cca_activites,id_cca = self.checkActivitesCCA(LNS,activites_a_inserer)
+                        for a in self.tmp[X][idCCA].sequence:
+                            if not LNS.getGraphComponents().getActivityCCA(a)==idCCA:
+                                print(X,idCCA,self.tmp[X][idCCA].sequence,a,"process",MPI.COMM_WORLD.Get_rank())
+                            assert(LNS.getGraphComponents().getActivityCCA(a)==idCCA)
+                return self.feasibleActivities[X]
+            def checkActivitiesCCA(self,LNS,activitiesToInsert):
+                ccaActivities = {}
+                for a in activitiesToInsert:
+                    idCCA = LNS.getGraphComponents().getActivityCCA(a)
+                    if idCCA not in ccaActivities:
+                        ccaActivities[idCCA] = []
+                    ccaActivities[idCCA].append(a)
+                idCCA = list(ccaActivities.keys())[0]
+                assert(len(ccaActivities)<=1)
+                return ccaActivities,idCCA
+            def initTemporaryInsertion(self,LNS,constellation,r,activitiesToInsert):
+                self.tmp[activitiesToInsert] = {}
+                ccaActivities,idCCA = self.checkActivitiesCCA(LNS,activitiesToInsert)
                 # plan earliest,latest
-                s,cca = id_cca
+                s,cca = idCCA
                 groups = {0 : copy(LNS.getSolCCA(s,cca).getSequence())}
-                #if(not LNS.modeleDeTransition.estTimeDependent()):
+                #if(not LNS.transitionModel.isTimeDependent()):
                 try:
-                    LNS.plansCritiques(constellation,id_cca)
+                    LNS.computeCriticalPlans(constellation,idCCA)
                 except NumericalError:
-                    assert(LNS.modeleDeTransition.estTimeDependent())
-                self.tmp[activites_a_inserer][id_cca] = LNS.getSolCCA(s,cca).copieTemporaire()
-                longueur_avant_insertion = len(self.tmp[activites_a_inserer][id_cca].sequence)
-                cp = cca_activites[id_cca].copy()
+                    assert(LNS.transitionModel.isTimeDependent())
+                self.tmp[activitiesToInsert][idCCA] = LNS.getSolCCA(s,cca).getCopy()
+                lengthBeforeInsertion = len(self.tmp[activitiesToInsert][idCCA].sequence)
+                cp = ccaActivities[idCCA].copy()
                 self.randominitInsertTmp.shuffle(cp)
-                cca_activites[id_cca] = cp
-                for a in self.tmp[activites_a_inserer][id_cca].sequence:
-                    assert(id_cca==LNS.grapheDependances.getActiviteCCA(a))
-                return longueur_avant_insertion,groups,s,id_cca,cca_activites
+                ccaActivities[idCCA] = cp
+                for a in self.tmp[activitiesToInsert][idCCA].sequence:
+                    assert(idCCA==LNS.getGraphComponents().getActivityCCA(a))
+                return lengthBeforeInsertion,groups,s,idCCA,ccaActivities
         
-            def insertionTemporaireGloutonne(self,constellation,cca_activites,activites_a_inserer,id_cca,solver_used_after,modeleDeTransition):
+            def performTemporaryGreedyInsertion(self,constellation,ccaActivities,activitiesToInsert,idCCA,solverUsedAfter,transitionModel):
                 if config.verifMode():
-                    assert(self.tmp[activites_a_inserer][id_cca].sequenceFaisable(constellation,modeleDeTransition))
-                faisable = True
-                printOpen("insertion des activités",activites_a_inserer," (méthode gloutonne) dans la cca",id_cca,c='c')
-                for i,p in enumerate(cca_activites[id_cca]):
-                    printOpen("insertion gloutonne")
-                    if faisable:
-                        assert(self.tmp[activites_a_inserer][id_cca].sequenceFaisable(constellation,modeleDeTransition))
-                    #if not modeleDeTransition.estTimeDependent() and faisable:
-                        if self.tmp[activites_a_inserer][id_cca].plansAJour():
-                            inserer = self.tmp[activites_a_inserer][id_cca].insererActivitePlansCritiques(constellation,p,modeleDeTransition)
+                    assert(self.tmp[activitiesToInsert][idCCA].isSequenceFeasible(constellation,transitionModel))
+                feasible = True
+                printOpen("insertion of activities",activitiesToInsert," (greedy method) in CCA",idCCA,c='c')
+                for i,p in enumerate(ccaActivities[idCCA]):
+                    printOpen("greedy insertion")
+                    if feasible:
+                        assert(self.tmp[activitiesToInsert][idCCA].isSequenceFeasible(constellation,transitionModel))
+                    #if not transitionModel.isTimeDependent() and feasible:
+                        if self.tmp[activitiesToInsert][idCCA].arePlansUpToDate():
+                            insert = self.tmp[activitiesToInsert][idCCA].insertActivityTCriticalPlansMethod(constellation,p,transitionModel)
                         else:
-                            assert(modeleDeTransition.estTimeDependent())
-                            inserer = self.tmp[activites_a_inserer][id_cca].insererActivite(constellation,p,modeleDeTransition)
+                            assert(transitionModel.isTimeDependent())
+                            insert = self.tmp[activitiesToInsert][idCCA].insertActivityTimeConsumingMethod(constellation,p,transitionModel)
                     else:
-                        inserer = self.tmp[activites_a_inserer][id_cca].insererActivite(constellation,p,modeleDeTransition)
-                    if inserer:
-                        assert(self.tmp[activites_a_inserer][id_cca].sequenceFaisable(constellation,modeleDeTransition))
+                        insert = self.tmp[activitiesToInsert][idCCA].insertActivityTimeConsumingMethod(constellation,p,transitionModel)
+                    if insert:
+                        assert(self.tmp[activitiesToInsert][idCCA].isSequenceFeasible(constellation,transitionModel))
                     
-                    faisable = inserer and faisable
+                    feasible = insert and feasible
                     printClose()
-                    if not faisable and not solver_used_after:
+                    if not feasible and not solverUsedAfter:
                         break
-                    printOpen("MAJ des plans critiques")
-                    if faisable:
+                    printOpen("Update critical plans")
+                    if feasible:
                         try:
-                        #if not modeleDeTransition.estTimeDependent() and faisable:
-                            self.calculerPlansCritiques(activites_a_inserer,id_cca,constellation,modeleDeTransition)
+                            self.computeCriticalPlans(activitiesToInsert,idCCA,constellation,transitionModel)
                         except NumericalError:
-                            assert(modeleDeTransition.estTimeDependent())
+                            assert(transitionModel.isTimeDependent())
                             
                     printClose()
                 printClose()
-                return faisable        
-            def calculerPlansCritiques(self,activites_a_inserer,id_cca,constellation,modeleDeTransition):    
+                return feasible        
+            def computeCriticalPlans(self,activitiesToInsert,idCCA,constellation,transitionModel):    
                 if config.getOptValue("use_solver"):
-                    self.tmp[activites_a_inserer][id_cca].MAJPlansCritiques(constellation,modeleDeTransition)
+                    self.tmp[activitiesToInsert][idCCA].updateCriticalPlans(constellation,transitionModel)
                 else: # a remplacer par une propagation
-                    self.tmp[activites_a_inserer][id_cca].MAJPlansCritiques(constellation,modeleDeTransition)
-            def resetCCA(self,id_cca,grapheDep):
-                #printColor("reset cca",cca,"; requête",self.r,c='y')
+                    self.tmp[activitiesToInsert][idCCA].updateCriticalPlans(constellation,transitionModel)
+            def resetCCA(self,idCCA,grapheDep):
                 del_x = []
                 for X in self.tmp:
-                    if id_cca in self.tmp[X]:
+                    if idCCA in self.tmp[X]:
                         del_x.append(X)
                 for x in del_x:
                     del self.tmp[x]
-                    if x in self.activites_faisables:
-                        del self.activites_faisables[x]
+                    if x in self.feasibleActivities:
+                        del self.feasibleActivities[x]
                 
-                activites_a_liberer = grapheDep.getActivitesComposante(id_cca)
-                for a in self.inactifs:
-                    if a in activites_a_liberer:
-                        self.inactifs.remove(a)
+                activitiesToRelease = grapheDep.getActivitiesOfComponent(idCCA)
+                for a in self.inactives:
+                    if a in activitiesToRelease:
+                        self.inactives.remove(a)
                 return len(del_x)
                 
-            def insertionTemporaireSolver(self,constellation,LNS,cca_activites,faisable,longueur_avant_insertion,activites_a_inserer,id_cca,groups,forbid_solver,modeleDeTransition):
+            def temporayInsertionSolver(self,constellation,LNS,ccaActivities,feasible,lengthBeforeInsertion,activitiesToInsert,idCCA,groups,forbidSolver,transitionModel):
                 try:
-                    copy_sequence = self.tmp[activites_a_inserer][id_cca].getSequence()
-                    assert(len(activites_a_inserer)>0)
-                    printOpen("recherche locale",c='c')
-                    groups[1] = cca_activites[id_cca]
+                    copy_sequence = self.tmp[activitiesToInsert][idCCA].getSequence()
+                    assert(len(activitiesToInsert)>0)
+                    printOpen("local search",c='c')
+                    groups[1] = ccaActivities[idCCA]
                     assert(len(groups[1])>0)
-                    for a in self.tmp[activites_a_inserer][id_cca].sequence:
-                        assert(LNS.grapheDependances.getActiviteCCA((a)==id_cca))
-                    self.tmp[activites_a_inserer][id_cca].rechercheLocale(constellation,'OPTWGroups',modeleDeTransition,groups=groups,allow_no_solution=True)
-                    for a in self.tmp[activites_a_inserer][id_cca].sequence:
-                        assert(LNS.grapheDependances.getActiviteCCA((a)==id_cca))
-                    longueur_supposee = longueur_avant_insertion + len(activites_a_inserer)
-                    faisable = (longueur_supposee == len(self.tmp[activites_a_inserer][id_cca].sequence))
+                    for a in self.tmp[activitiesToInsert][idCCA].sequence:
+                        assert(LNS.getGraphComponents().getActivityCCA((a)==idCCA))
+                    self.tmp[activitiesToInsert][idCCA].localSearch(constellation,'OPTW',transitionModel,groups=groups,allowNoSolution=True)#'OPTWGroups'?
+                    for a in self.tmp[activitiesToInsert][idCCA].sequence:
+                        assert(LNS.getGraphComponents().getActivityCCA((a)==idCCA))
+                    assumedLength = lengthBeforeInsertion + len(activitiesToInsert)
+                    feasible = (assumedLength == len(self.tmp[activitiesToInsert][idCCA].sequence))
                     printClose()
-                    return faisable
+                    return feasible
                 except InfeasibleSolutionfromSolverException:
                     if config.verifMode():
-                        print("Erreur solver : solution infaisable.")
+                        print("Solver error: infeasible solution.")
                     printClose()
                     return False
         
             # insere les activites dans tmp (copies des sol CCA) et renvoie la liste des cca modifiées
             # sur un noeud : une seule cca est modifiee
-            def insertionTemporaire(self,LNS,constellation,r,activites_a_inserer,forbid_solver,modeleDeTransition):
-                longueur_avant_insertion,groups,s,id_cca,cca_activites = self.initInsertionTemporaire(LNS,constellation,r,activites_a_inserer)
-                solver_used = config.getOptValue("use_solver") and not forbid_solver
-                faisable = False
-                #if not solver_used:
-                faisable = self.insertionTemporaireGloutonne(constellation,cca_activites,activites_a_inserer, id_cca, solver_used,modeleDeTransition)
-                assert(faisable is not None)
-                if not faisable and solver_used:
-                    faisable = self.insertionTemporaireSolver(constellation,LNS,cca_activites, faisable, longueur_avant_insertion, activites_a_inserer, id_cca, groups,forbid_solver,modeleDeTransition)
-                return faisable
+            def temporaryInsertion(self,LNS,constellation,r,activitiesToInsert,forbidSolver,transitionModel):
+                lengthBeforeInsertion,groups,s,idCCA,ccaActivities = self.initTemporaryInsertion(LNS,constellation,r,activitiesToInsert)
+                isSolverUsed = config.getOptValue("use_solver") and not forbidSolver
+                feasible = False
+                feasible = self.performTemporaryGreedyInsertion(constellation,ccaActivities,activitiesToInsert, idCCA, isSolverUsed,transitionModel)
+                assert(feasible is not None)
+                if not feasible and isSolverUsed:
+                    feasible = self.temporayInsertionSolver(constellation,LNS,ccaActivities, feasible, lengthBeforeInsertion, activitiesToInsert, idCCA, groups,forbidSolver,transitionModel)
+                return feasible
         
         class SolutionSaver:
             def __init__(self,LNS,constellation):
-                self.solCCAs = {s : {cca : LNS.getSolCCA(s,cca).copieTemporaire() for cca in LNS.getSolCCAs()[s]} for s in LNS.getSolCCAs()}
-                self.modes_retenus = LNS.getModesRetenus().copy()
-                self.etatRequetes = deepcopy(LNS.etatRequetes)
-                self.objectif = LNS.getObjectif(constellation,recompute=True)
+                self.solCCAs = {s : {cca : LNS.getSolCCA(s,cca).getCopy() for cca in LNS.getSolCCAs()[s]} for s in LNS.getSolCCAs()}
+                self.selectedModes = LNS.getSelectedModes().copy()
+                self.requestState = deepcopy(LNS.requestState)
+                self.objective = LNS.getObjective(constellation,recompute=True)
             
             def backupSolution(self,LNS):
                 LNS.setAllSolCCAs(self.solCCAs)
-                LNS.ecraserModes(self.modes_retenus)
-                LNS.setObjectif(self.objectif)
-                LNS.etatRequetes = self.etatRequetes
+                LNS.overwriteModes(self.selectedModes)
+                LNS.setObjective(self.objective)
+                LNS.requestState = self.requestState
         
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
-            super().__init__(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+            super().__init__(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             shift = getDisplayDepth()-1
             shiftLeftDisplay(shift)
             #self.explication = {}
             # Initialisation des requetes
-            self.initRequetes(constellation)
+            self.initRequests(constellation)
             # composantes et solutions de composantes
             self.oracle = {}
-            self.positions_cca = {}
-            self.cca_obs = []
+            self.ccaPositions = {}
+            self.ccaObservations = []
             self.nDegradation = 0
-            self.nNonDegrade = 0
+            self.nNoDegradation = 0
             self.tlim = min(self.tlim,config.getOptValue("time"))
             # cca qui contiennent au moins une obs (écarter les cca avec qu'un téléchargement)
-            for id_cca in self.grapheDependances.getComposantes():
-                s,cca = id_cca
-                self.positions_cca[id_cca] = np.mean(np.array([constellation.getSatellite(s).getActivite(a).getCoordonnees() for a in self.grapheDependances.getActivitesComposante(id_cca)]))
-                for a in self.grapheDependances.getActivitesComposante(id_cca):
-                    if constellation.getSatellite(constellation.getSatelliteActivite(a)).estObservation(a):
-                        self.cca_obs.append(id_cca)
+            for idCCA in self.getGraphComponents().getComponents():
+                s,cca = idCCA
+                self.ccaPositions[idCCA] = np.mean(np.array([constellation.getSatellite(s).getActivity(a).getCoordinates() for a in self.getGraphComponents().getActivitiesOfComponent(idCCA)]))
+                for a in self.getGraphComponents().getActivitiesOfComponent(idCCA):
+                    if constellation.getSatellite(constellation.getSatelliteActivity(a)).isObservation(a):
+                        self.ccaObservations.append(idCCA)
                         break
-                #self.oracle[id_cca] = Oracle(id_cca)
-            self.calculerRequetesPresentes(constellation)
+                #self.oracle[idCCA] = Oracle(idCCA)
+            self.updatePresentRequests(constellation)
             # si 1 coeur : slave local
             comm = MPI.COMM_WORLD
             comm.Barrier()
-            self.notifierPreprocessing(constellation)
-            self.initOperateurs()
-            self.initSourcesAleatoires()
+            self.notifyPreprocessing(constellation)
+            self.initOperators()
+            self.initRandomizers()
             shiftRightDisplay(shift)
 
-        def initSourcesAleatoires(self):
-            id_mpi = MPI.COMM_WORLD.Get_rank()
-            seed_option = config.getOptValue("seed")
-            self.randomChoixRequete = rd.Random(id_mpi+seed_option)
+        def initRandomizers(self):
+            idMPI = MPI.COMM_WORLD.Get_rank()
+            configuredSeed = config.getOptValue("seed")
+            self.requestChoiceRandomizer = rd.Random(idMPI+configuredSeed)
             
         # retourne les CCA qui contiennent au moins une observation
         def getCCAObservations(self):
-            return self.cca_obs
+            return self.ccaObservations
         
         def distanceCCA(self,cca1,cca2):
-            return math.dist(self.positions_cca[cca1]-self.positions_cca[cca2])
+            return math.dist(self.ccaPositions[cca1]-self.ccaPositions[cca2])
         
         """
             =============================================== 
                             RESOLUTION
             =============================================== 
         """
-        def initRequetes(self,constellation):
-            super().initRequetes(constellation,initFirstMode=False)           
+        def initRequests(self,constellation):
+            super().initRequests(constellation,initFirstMode=False)           
     
-        def insererSequences(self,constellation,sequences):
-            requetes_retenues = [x[0] for x in self.getModesRetenus()]
-            for id_cca in sequences:
-                s,cca = id_cca
-                seq = [a for a in sequences[id_cca] if constellation.getRequeteActivite(a) in requetes_retenues]
+        def insertSequences(self,constellation,sequences):
+            selectedRequests = [x[0] for x in self.getSelectedModes()]
+            for idCCA in sequences:
+                s,cca = idCCA
+                seq = [a for a in sequences[idCCA] if constellation.getRequestActivity(a) in selectedRequests]
                 self.getSolCCA(s,cca).setSequence(constellation,seq)
     
-        def creerBackup(self,constellation):
+        def createBackup(self,constellation):
             return self.SolutionSaver(self,constellation)
                 
-        def LNSsolve(self,constellation,mailbox,dernier_record,it):
+        def LNSsolve(self,constellation,mailbox,lastRecord,it):
             filtre = ['time','obj','modes','requetes','best']
-            op_call = 0
+            operatorCalls = 0
             stableIt = 0
-            while stableIt<config.getOptValue("stableIt") and op_call<config.getOptValue("max_operateur") and time()-self.start_date<self.tlim:
+            while stableIt<config.getOptValue("stableIt") and operatorCalls<config.getOptValue("max_operateur") and time()-self.startDate<self.tlim:
                 if config.getOptValue("verif"):
-                    self.verifierSolution(constellation)
+                    self.verifySolution(constellation)
                 if config.getOptValue("dynamic"):
-                    change,liste_requetes = constellation.libererNouvellesRequetes(self.grapheDependances)
+                    change,requestList = constellation.releaseNewRequests(self.getGraphComponents())
                     if change:
-                        self.MAJNouvellesRequetes(constellation,time()-self.start_date,liste_requetes)
-                        self.operateur.MAJNouvellesRequetes(self)
-                        #self.perturbateur.MAJNouvellesRequetes(self)
-                improvment = self.appliquerOperateur(constellation)
-                self.notifierFinOperateur(constellation)
-                #self.setObjectif(self.calculerObjectif(constellation))
+                        self.updateNewRequests(constellation,time()-self.startDate,requestList)
+                        self.operator.updateNewRequests(self)
+                improvment = self.applyOperator(constellation)
+                self.notifyEndOperator(constellation)
                 if not improvment:
                     stableIt += 1
                 else:
                     stableIt = 0
-                op_call += 1
-            self.notifierFinIteration(constellation)
-            if time()-dernier_record>=config.glob.periode_affichage_info:
-                dernier_record = time()
-                self.afficherInfo(time(),self.start_date,constellation,title="RESULTAT ITERATION " +str(it)+" CPU "+str(MPI.COMM_WORLD.Get_rank()),filtre=filtre,color='c',add={"nombre d'appels à l'opérateur durant l'itération'":op_call})
-            return op_call,dernier_record
+                operatorCalls += 1
+            self.notifyEndIteration(constellation)
+            if time()-lastRecord>=config.glob.periode_affichage_info:
+                lastRecord = time()
+                self.displayInformation(time(),self.startDate,constellation,title="RESULT ITERATION " +str(it)+" CPU "+str(MPI.COMM_WORLD.Get_rank()),filtre=filtre,color='c',add={"number of calls to the operator'":operatorCalls})
+            return operatorCalls,lastRecord
         
-        def initOperateurs(self):
-            #self.heuristiqueGreedy = self.HeuristiqueRatio('ratio',1)
-            self.operateurs = []
+        def initOperators(self):
+            self.operators = []
             # choix de la méthode de perturbation
             if config.getOptValue("version") == "greedy-request":
-                #self.perturbateur = op.Redemarrage()
                 perturb = config.getOptValue("perturb_rate")
                 destroy = config.getOptValue("destroy")
-                accept_worse_solution=True
-                self.perturbateur = op.DestroyAndRepairGreedyRequest(self.modeleDeTransition,perturb,accept_worse_solution)
-                accept_worse_solution=False
-                self.operateur = op.DestroyAndRepairGreedyRequest(self.modeleDeTransition,destroy,accept_worse_solution)
+                acceptWorseSolution=True
+                self.perturbator = op.DestroyAndRepairGreedyRequest(self.transitionModel,perturb,acceptWorseSolution)
+                acceptWorseSolution=False
+                self.operator = op.DestroyAndRepairGreedyRequest(self.transitionModel,destroy,acceptWorseSolution)
             elif config.getOptValue("version") == "greedy-cca":
-                #self.perturbateur = op.Redemarrage()
                 perturb = config.getOptValue("perturb_rate")
-                accept_worse_solution=True
-                self.perturbateur = op.DestroyAndRepairGreedyRequest(self.modeleDeTransition,perturb,accept_worse_solution)
-                accept_worse_solution=False
-                self.operateur = op.DestroyAndRepairGreedyCCA(self,modeleDeTransition,accept_worse_solution,k=config.getOptValue("n_cca"))
+                acceptWorseSolution=True
+                self.perturbator = op.DestroyAndRepairGreedyRequest(self.transitionModel,perturb,acceptWorseSolution)
+                acceptWorseSolution=False
+                self.operator = op.DestroyAndRepairGreedyCCA(self,transitionModel,acceptWorseSolution,k=config.getOptValue("n_cca"))
             elif config.getOptValue("version") in ["hybrid","coop"]:
                 perturb = config.getOptValue("perturb_rate")
-                accept_worse_solution=True
-                self.perturbateur = op.DestroyAndRepairGreedyRequest(self.modeleDeTransition,perturb,accept_worse_solution)
-                self.operateur = op.VoisinageCP(MPI.COMM_WORLD.Get_size(),self.modeleDeTransition,k=config.getOptValue("n_cca"))
+                acceptWorseSolution=True
+                self.perturbator = op.DestroyAndRepairGreedyRequest(self.transitionModel,perturb,acceptWorseSolution)
+                self.operator = op.VoisinageCP(MPI.COMM_WORLD.Get_size(),self.transitionModel,k=config.getOptValue("n_cca"))
             else:
-                raise NameError("Methode de perturbation inconnue")
+                raise NameError("Unknown perturbation method")
                 
-        def notifierChangementCCA(self,id_cca):
-            cca_tmp_supp = 0
-            for r in self.etatRequetes:
-                cca_tmp_supp += self.etatRequetes[r].resetCCA(id_cca,self.grapheDependances)
-            return cca_tmp_supp
+        def notifyCCAChangement(self,idCCA):
+            ccaTmpSupp = 0
+            for r in self.requestState:
+                ccaTmpSupp += self.requestState[r].resetCCA(idCCA,self.getGraphComponents())
+            return ccaTmpSupp
         
         def checkSequence(self,constellation):
             for s in self.getSolCCAs():
                 for cca in self.getSolCCAs():        
                     for a in self.getSolCCA(s,cca).getSequence() :
-                        assert(s==constellation.getSatelliteActivite(a))
+                        assert(s==constellation.getSatelliteActivity(a))
         
-        def ecraserSolutionCCA(self,constellation,id_cca,sequence):
-            s,cca = id_cca
-            self.getSolCCA(s,cca).setSequence(constellation,sequence,self.modeleDeTransition)
-            return self.notifierChangementCCA(id_cca)
+        def overwriteCCASolution(self,constellation,idCCA,sequence):
+            s,cca = idCCA
+            self.getSolCCA(s,cca).setSequence(constellation,sequence,self.transitionModel)
+            return self.notifyCCAChangement(idCCA)
             
-        def creerSolutionInitiale(self,constellation):
+        def createInitialSolution(self,constellation):
             repetitions = 1 # determiste désormais donc inutile de chercher plus loin
-            self.greedyFill(constellation,limit_req=False,forbid_solver=True)
+            self.greedyFill(constellation,requestsLimit=False,forbidSolver=True)
             if config.getOptValue("use_solver"):
-                self.resetEtatsRequetes(constellation)
-            # quand on passe d'un greedy sans solver à greedy avec solver il faut reset les inactifs
+                self.resetRequestState(constellation)
+            # quand on passe d'un greedy sans solver à greedy avec solver il faut reset les inactives
             return repetitions
 
-        def initEtatRequetes(self,constellation):
-            self.etatRequetes = {}
-            for r in constellation.getToutesRequetes():
-                self.etatRequetes[r] = self.EtatRequete(self,constellation,r)
+        def initRequestState(self,constellation):
+            self.requestState = {}
+            for r in constellation.getAllRequests():
+                self.requestState[r] = self.RequestState(self,constellation,r)
             
-        def resetEtatsRequetes(self,constellation):
-            for r in self.etatRequetes:
-                self.etatRequetes[r].initRechercheMode(self,constellation)
+        def resetRequestState(self,constellation):
+            for r in self.requestState:
+                self.requestState[r].initModeResearch(self,constellation)
         
-        def sauvegarderEtatActivites(self):
-            for r in self.etatRequetes:
-                self.etatRequetes[r].sauvegarderEtatActivites()
+        def saveActivitiesState(self):
+            for r in self.requestState:
+                self.requestState[r].saveActivitiesState()
                 
-        def restaurerEtatActivites(self):
-            for r in self.etatRequetes:
-                self.etatRequetes[r].restaurerEtatActivites()
+        def restoreActivitiesState(self):
+            for r in self.requestState:
+                self.requestState[r].restoreActivitiesState()
                 
-        def resoudre(self,constellation,mailbox,afficher=True):
+        def resolve(self,constellation,mailbox,afficher=True):
             comm = MPI.COMM_WORLD
             size = comm.Get_size()
-            #objectif = self.calculerObjectif(constellation)
             #filtre = ['time','obj','modes','requetes','best'] # infos à afficher
             it=0
-            dernier_record = time()
-            application_operateur = 0
-            n_perturbations = 0
-            self.initEtatRequetes(constellation)
-            
-            self.creerSolutionInitiale(constellation)
-            #self.verifierSolutionSiVerifMode(constellation)
-            #self.setObjectif(self.calculerObjectif(constellation))
-            self.notifierSansEvenement(constellation)
-            self.somme_ecart_perturbation = 0
-            while time()-self.start_date<self.tlim and it<config.getOptValue("max_iteration"):
-                #self.setObjectif(self.calculerObjectif(constellation))
+            lastRecord = time()
+            operatorsApplicationCounter = 0
+            nPerturbations = 0
+            self.initRequestState(constellation)
+            self.createInitialSolution(constellation)
+            self.notifyNoEvent(constellation)
+            self.sumDeltaPertubation = 0
+            while time()-self.startDate<self.tlim and it<config.getOptValue("max_iteration"):
                 it += 1 
-                if time()-self.start_date<self.tlim and it<config.getOptValue("max_iteration"):
-                    op_call,dernier_record = self.LNSsolve(constellation,mailbox,dernier_record,it)
-                    application_operateur += op_call
-                    score_avant = self.getSolutionContainer().objectif[0]
-                    if time()-self.start_date<self.tlim:
-                        printOpen("Perturber",c='y')
-                        self.perturbateur.appliquer(self,constellation)
-                        n_perturbations += 1
+                if time()-self.startDate<self.tlim and it<config.getOptValue("max_iteration"):
+                    operatorCalls,lastRecord = self.LNSsolve(constellation,mailbox,lastRecord,it)
+                    operatorsApplicationCounter += operatorCalls
+                    utilityBefore = self.getSolutionContainer().objective[0]
+                    if time()-self.startDate<self.tlim:
+                        printOpen("Perturb",c='y')
+                        self.perturbator.apply(self,constellation)
+                        nPerturbations += 1
                         printClose()
                     if config.getOptValue("verif"):
-                        self.verifierCCA(constellation)
-                    score_apres = self.getSolutionContainer().objectif[0]
-                    self.somme_ecart_perturbation += (score_apres-score_avant)
-                    if score_avant>score_apres:  
+                        self.verifyCCAs(constellation)
+                    utilityAfter = self.getSolutionContainer().objective[0]
+                    self.sumDeltaPertubation += (utilityAfter-utilityBefore)
+                    if utilityBefore>utilityAfter:  
                          self.nDegradation += 1
                     else:
-                        self.nNonDegrade += 1  
+                        self.nNoDegradation += 1  
             try:
-                self.perturbation_moyenne = self.somme_ecart_perturbation/(self.nDegradation+self.nNonDegrade)           
+                self.meanPertubation = self.sumDeltaPertubation/(self.nDegradation+self.nNoDegradation)           
             except:
-                self.perturbation_moyenne = 0
-            #print("Degradation_moyenne :",self.perturbation_moyenne)
-            #print("Nombre de dégradation :",self.nDegradation)
-            #print("Nombre de non dégradations :",self.nNonDegrade)
-            self.verifierSolutionSiVerifMode(constellation)
-            objectif,solCCAs,modes_retenus = self.getBest()
-            #self.setObjectif(objectif)
+                self.meanPertubation = 0
+            self.verifySolutionIfVerifyMode(constellation)
+            objective,solCCAs,selectedModes = self.getBest()
             self.setAllSolCCAs(solCCAs)
-            self.setModesRetenus(modes_retenus,constellation)
-            
-            self.notifierFinExecution(constellation)
-            return application_operateur,it
+            self.setSelectedModes(selectedModes,constellation)
+            self.notifyEndExecution(constellation)
+            return operatorsApplicationCounter,it
                 
-        def redemarrer(self,constellation):
-            self.initEtatRequetes(constellation)
-            for r in self.etatRequetes:
-                self.etatRequetes[r].initRechercheMode(self,constellation)
-            super().redemarrer(constellation)
+        def restart(self,constellation):
+            self.initRequestState(constellation)
+            for r in self.requestState:
+                self.requestState[r].initModeResearch(self,constellation)
+            super().restart(constellation)
     
-        def estStable(self,objectif):
-            return objectif[0]<=self.solution.historique.getBest()[0][0]
+        def isStable(self,objective):
+            return objective[0]<=self.solution.history.getBest()[0][0]
         
-        def estActif(self,lambda_v):
+        def isActive(self,lambda_v):
             return lambda_v[3]<=config.LNS.Tmax
     
-        def reparer(self,constellation,req_detruites,entree_opt):
-            printOpen("réparer : "+str(self.operateurReparation),c='b')
-            requetes = self.operateurReparation.reparer(self,constellation,req_detruites,entree_opt)
-            printColor(str(len(requetes))+" requêtes reconstruites",c='g')
+        def repair(self,constellation,destroyedRequests,entryOpt):
+            printOpen("repair: "+str(self.operatorReparation),c='b')
+            requests = self.operatorReparation.repair(self,constellation,destroyedRequests,entryOpt)
+            printColor(str(len(requests))+" rebuilt requests",c='g')
             printClose()
             
-        def detruire(self,constellation):
-            printOpen("destruction : "+str(self.operateurDestruction),c='c')
-            req_detruites,sortie_opt = self.operateurDestruction.detruire(self,constellation)
+        def destroy(self,constellation):
+            printOpen("destruction : "+str(self.operatorDestruction),c='c')
+            destroyedRequests,sortie_opt = self.operatorDestruction.destroy(self,constellation)
             printClose()
-            return req_detruites,sortie_opt
+            return destroyedRequests,sortie_opt
         
-        def appliquerOperateur(self,constellation):
-            printColor('Appliquer '+str(self.operateur),c='c')
-            res = self.operateur.appliquer(self,constellation)
+        def applyOperator(self,constellation):
+            printColor('Apply '+str(self.operator),c='c')
+            res = self.operator.apply(self,constellation)
             return res
             
-        def validerSol(self,sol):
-            cca_tmp_supp = 0
-            for id_cca in sol:
-                printColor("valider cca",id_cca,c='g')
-                s,cca = id_cca
-                self.setSolCCA(s,cca,sol[id_cca])
-                for r in self.etatRequetes:
-                    cca_tmp_supp += self.etatRequetes[r].resetCCA(id_cca,self.grapheDependances)
-            #print(cca_tmp_supp,"cca temporaires supprimées")
+        def validateSolution(self,sol):
+            ccaTmpSupp = 0
+            for idCCA in sol:
+                printColor("validate cca",idCCA,c='g')
+                s,cca = idCCA
+                self.setSolCCA(s,cca,sol[idCCA])
+                for r in self.requestState:
+                    ccaTmpSupp += self.requestState[r].resetCCA(idCCA,self.getGraphComponents())
+            #print(ccaTmpSupp,"cca temporaires supprimées")
     
         # confusion cout de transition et retard
-        def aggregerScore(self,score,methode='r1'):
+        def aggregateScore(self,score,methode='r1'):
             if methode=='r1':
                 return score[0]/(1+score[2])
             elif methode=='r2':
@@ -591,83 +561,81 @@ else:
             else:
                 raise ValueError("methode d'aggregation inconnue")
             
-        def rewardHeuristique(self,constellation,s,a):
-            return constellation.getSatellite(s).getActivite(a).getScore()/(constellation.getSatellite(s).getActivite(a).getDuree()+1)
+        def heuristicReward(self,constellation,s,a):
+            return constellation.getSatellite(s).getActivity(a).getScore()/(constellation.getSatellite(s).getActivity(a).getDuration()+1)
         
-        def choisirRequete(self,candidats,random=False):
-            if -1 in candidats:
+        def choseRequest(self,candidates,random=False):
+            if -1 in candidates:
                 return -1
-            if len(candidats)>0:
+            if len(candidates)>0:
                 if not random:
-                    return max(candidats,key=lambda r : self.etatRequetes[r].getScoreCourant())
+                    return max(candidates,key=lambda r : self.requestState[r].getCurrentScore())
                 else:
-                    select = self.randomChoixRequete().randInt(len(candidats))
-                    return candidats[select]
+                    select = self.requestChoiceRandomizer().randInt(len(candidates))
+                    return candidates[select]
             else:
                 return None
             
-        def greedyFill(self,constellation,limit_req=True,forbid_solver=False,random=False):
-            printOpen("remplissage glouton")
-            candidats = [r for r in self.etatRequetes if constellation.getRequete(r).estActif() and r not in self.requetesCouvertes()]
-            NReqCandidates = len(candidats)
+        def greedyFill(self,constellation,requestsLimit=True,forbidSolver=False,random=False):
+            printOpen("greedy filling")
+            candidates = [r for r in self.requestState if constellation.getRequest(r).isActive() and r not in self.fulfilledRequests()]
+            nCandidatesRequests = len(candidates)
             succes = 0
-            r = self.choisirRequete(candidats,random=random)
-            Nechecs = 0
-            compteur = 0
-            lim_notif = 50
-            while r is not None and self.getTempsEcoule() < self.tlim and (not limit_req or Nechecs<config.getOptValue("max_echecs")):
-                if time()-self.start_date>self.tlim:
-                    printColor("interruption du glouton",c='y')
+            r = self.choseRequest(candidates,random=random)
+            nFailures = 0
+            counter = 0
+            limNotif = 50
+            while r is not None and self.getTimeElapsed() < self.tlim and (not requestsLimit or nFailures<config.getOptValue("max_echecs")):
+                if time()-self.startDate>self.tlim:
+                    printColor("interrupting greedy",c='y')
                     break
-                printOpen("Recherche de chemin pour la requête ",r)
-                mode,sol_cca,vide = self.etatRequetes[r].tenterInsererRequete(self,constellation,r,forbid_solver,self.modeleDeTransition)
-                #printOpen("Insérer la requete",constellation.getRequete(r).getType(),r,c='g')
+                printOpen("Searching new mode for the request",r)
+                mode,solutionCCA,vide = self.requestState[r].tryInsertRequest(self,constellation,r,forbidSolver,self.transitionModel)
                 if mode is not None:
-                    #printColor("valider",noeuds_a_valider,c='g')
                     succes += 1
-                    self.validerSol(sol_cca)
-                    self.ajouterModeRetenu((r,mode.getId()),constellation)
-                    candidats.remove(r)
+                    self.validateSolution(solutionCCA)
+                    self.addSelectedMode((r,mode.getId()),constellation)
+                    candidates.remove(r)
                     if config.getOptValue("verif"):
-                        self.verifierCCA(constellation)
-                    printClose("Succès",c='g')
+                        self.verifyCCAs(constellation)
+                    printClose("Success",c='g')
                 else:
-                    Nechecs += 1
+                    nFailures += 1
                     if vide:
-                        printColor("Plus de mode",c='m')
-                        candidats.remove(r)
+                        printColor("No more modes",c='m')
+                        candidates.remove(r)
                     else:
-                        printColor("Mode infaisable",c='m')
-                    printClose("Echec",c='r')
-                r = self.choisirRequete(candidats,random=random)
-                if compteur==lim_notif or r is None:
-                    compteur = 0
-                    self.notifierSansEvenement(constellation)
-                compteur += 1
-                #self.notifierSansEvenement(constellation)
-            printClose(str(succes)+"/"+str(NReqCandidates)+" requêtes insérées. "+str(Nechecs)+" échecs.",c='g')
+                        printColor("Infeasible modes",c='m')
+                    printClose("Failure",c='r')
+                r = self.choseRequest(candidates,random=random)
+                if counter==limNotif or r is None:
+                    counter = 0
+                    self.notifyNoEvent(constellation)
+                counter += 1
+                #self.notifyNoEvent(constellation)
+            printClose(str(succes)+"/"+str(nCandidatesRequests)+" requests inserted. "+str(nFailures)+" failures.",c='g')
             
             
     class Processus:
-        def __init__(self,role,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+        def __init__(self,role,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
             self.role = role
-            self.initSolution(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            self.initSolution(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             
-        def initSolution(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
-            self.solution = LNS(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def initSolution(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+            self.solution = LNS(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             
-        def resoudre(self,constellation,mailbox,afficher=True):
-            application_operateur,it = self.solution.resoudre(constellation,mailbox,afficher)
+        def resolve(self,constellation,mailbox,afficher=True):
+            operatorsApplicationCounter,it = self.solution.resolve(constellation,mailbox,afficher)
             if config.getOptValue("version")!="coop":
                 MPI.COMM_WORLD.Barrier()
-            return application_operateur,it
+            return operatorsApplicationCounter,it
     
-        def meilleureSolution(self):
-            return self.solution.meilleureSolution()
+        def bestSolution(self):
+            return self.solution.bestSolution()
         
-        def releverObjectif(self):
+        def recordObjective(self):
             rel = config.glob.releves
-            sol = self.meilleureSolution()
+            sol = self.bestSolution()
             points = []
             i_rel = 0
             for i,(t,obj,modes) in enumerate(sol):
@@ -678,43 +646,44 @@ else:
                     i_rel += 1
             return points               
         
-        def tracerActivite(self,constellation,annoter=False):
-            return self.solution.tracerActivite(constellation,annoter)
+        def plotActivity(self,constellation,annoter=False):
+            return self.solution.plotActivity(constellation,annoter)
             
-        def tracerHistorique(self,init=True):
-            return self.solution.tracerHistorique(init)
+        def plotHistory(self,init=True):
+            return self.solution.plotHistory(init)
         
         def saveSample(self,constellation):
-            self.solution.saveSample(constellation,add=self.info_additionnelle)
+            self.solution.saveSample(constellation,add=self.additionnalInfo)
             
         def getSolution(self):
             return self.solution.getSolution()
         
-        def setSolution(self,sol,vid,modes_retenus,modes_candidats,modes_retires,objectif):
-            self.solution.setSol(sol,vid,modes_retenus,modes_candidats,modes_retires,objectif)
+        def setSolution(self,sol,vid,selectedModes,candidatesModes,removedModes,objective):
+            self.solution.setSol(sol,vid,selectedModes,candidatesModes,removedModes,objective)
         
-        def verifierSolution(self):
-            self.solution.verifierSolution()
+        def verifySolution(self):
+            self.solution.verifySolution()
             
         def getModesSolution(self):
             return self.solution.getModes()
         
     class Master(Processus):
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
-            super().__init__("master",constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+            super().__init__("master",constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             
-        def resoudre(self,constellation,mailbox,afficher=True):
-            application_operateur,it = super().resoudre(constellation,mailbox,afficher)
-            self.recolterResultats(mailbox)
+        def resolve(self,constellation,mailbox,afficher=True):
+            operatorsApplicationCounter,it = super().resolve(constellation,mailbox,afficher)
+            self.collectResults(mailbox)
             #self.terminerProcessus()
-            self.solution.afficherInfo(time(),self.solution.start_date,constellation,color='y',title='FIN')
-            self.solution.construirePlan(constellation)
+            filtre = ['best','obs' ,'requete',"size"]
+            self.solution.displayInformation(time(),self.solution.startDate,constellation,color='y',title='END', filtre=filtre)
+            self.solution.buildPlan(constellation)
          
-        def recolterResultats(self,mailbox):
+        def collectResults(self,mailbox):
             hist = {}
-            self.info_additionnelle = {}
+            self.additionnalInfo = {}
             if config.getOptValue("version") in ["hybrid","coop"]:
-                gaps,gains = self.solution.operateur.getGapsInfos()
+                gaps,gains = self.solution.operator.getGapsInfos()
             if config.getOptValue("version")!="coop":
                 for data in mailbox.readMessages():
                     cpu = data['cpu']
@@ -724,60 +693,60 @@ else:
                         gaps += data["gaps"]
                 if config.getOptValue("version") in ["hybrid","coop"] :
                     if len(gains)>0:
-                        gains_positif_moyen = np.mean([x for x in gains if x>0])
-                        pourcentage_succes = len([x for x in gains if x>0])/len(gains)
+                        positiveMeanReward = np.mean([x for x in gains if x>0])
+                        successPercentage = len([x for x in gains if x>0])/len(gains)
                     else:
-                        gains_positif_moyen = 0
-                        pourcentage_succes = 0
-                    Nproblemes = len(gains)
-                    gain_moyen = np.mean(gains)
-                    self.info_additionnelle["gaps_moyen"] = gain_moyen
-                    self.info_additionnelle["gains"] = gains_positif_moyen
-                    self.info_additionnelle["fréquence_succès"] = pourcentage_succes
-                    self.info_additionnelle["nombre_problèmes"] = Nproblemes
-                self.solution.solution.historique.fusionner(hist)
+                        positiveMeanReward = 0
+                        successPercentage = 0
+                    nProblems = len(gains)
+                    meanReward = np.mean(gains)
+                    self.additionnalInfo["gaps_moyen"] = meanReward
+                    self.additionnalInfo["gains"] = positiveMeanReward
+                    self.additionnalInfo["fréquence_succès"] = successPercentage
+                    self.additionnalInfo["nombre_problèmes"] = nProblems
+                self.solution.solution.history.merge(hist)
     
     class Slave(Processus):
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
-            super().__init__("slave "+str(rank),constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            super().__init__("slave "+str(rank),constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
         
-        def informationAdditionnelles(self):
+        def additionnalInformation(self):
             data = {}
             if config.getOptValue("version") in ["hybrid","coop"]:
-                gaps,gains = self.solution.operateur.getGapsInfos()
+                gaps,gains = self.solution.operator.getGapsInfos()
                 data["gaps"] = gaps
                 data["gains"] = gains
             return data
         
-        def formaterResultat(self):
-            add = self.informationAdditionnelles()
-            data = {'hist':self.solution.solution.historique,'cpu':MPI.COMM_WORLD.Get_rank()}
+        def formatResult(self):
+            add = self.additionnalInformation()
+            data = {'hist':self.solution.solution.history,'cpu':MPI.COMM_WORLD.Get_rank()}
             hist = data['hist']
             for key in add:
                 data[key] = add[key]
             return data
         
-        def resoudre(self,constellation,mailbox):
+        def resolve(self,constellation,mailbox):
             if config.getOptValue("version")!="coop":
-                super().resoudre(constellation,mailbox)
-                data = self.formaterResultat()
-                mailbox.posterMessage(data)
+                super().resolve(constellation,mailbox)
+                data = self.formatResult()
+                mailbox.postMessage(data)
         
         
 class runnableLNS:
-    def execute(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
-        mailbox = MessagerieBloquante()
+    def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+        mailbox = BlockingCommunication()
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         if rank == 0:
-            self.process = Master(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
-            self.process.resoudre(constellation,mailbox)
+            self.process = Master(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            self.process.resolve(constellation,mailbox)
             
         else:
-            self.process = Slave(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
-            self.process.resoudre(constellation,mailbox) 
+            self.process = Slave(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            self.process.resolve(constellation,mailbox) 
         return self.process.solution.getSolutionContainer()
     
     def getName(self):

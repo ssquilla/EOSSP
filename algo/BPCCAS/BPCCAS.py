@@ -18,113 +18,113 @@ else:
     import random as rd
     
     class BatchParallelCCASearch(Solver):
-        def __init__(self,constellation,start,modeleDeTransition,dt_construction_transition,colors={'iteration':'c',"no_event":'w','end':'y'},tlim=np.inf,CCAs=None,solution=None):
-            super().__init__(constellation,start,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def __init__(self,constellation,start,transitionModel,dt_construction_transition,colors={'iteration':'c',"no_event":'w','end':'y'},tlim=np.inf,CCAs=None,solution=None):
+            super().__init__(constellation,start,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             self.colors = colors
-            self.explications = {}
+            self.explainations = {}
             if MPI.COMM_WORLD.Get_size()==1: # structure de données des slaves si processus seul
-                self.echecs_sans_explications = []
-                self.indetermines = []
+                self.failuresWithoutExplainations = []
+                self.undetermined = []
                 self.sequences = {}
             
             comm = MPI.COMM_WORLD
             if comm.Get_size()==1:
-                self.localSlave = Slave(constellation,start,modeleDeTransition)
-            printColor("Durée d'initialisation :",time()-self.start_date,c='b')
+                self.localSlave = Slave(constellation,start,transitionModel)
+            printColor("Initialization duration:",time()-self.startDate,c='b')
             # mapper les cca
             #self.creerMappingCCASlaves()
         
-        def modeDestructionActive(self):
+        def isActiveDestructionMode(self):
             return config.getOptValue("destroy_BPCCAS") is not None and config.getOptValue("destroy_BPCCAS")>0
             
-        def modeBruitageActive(self):
+        def isActiveNoisingMode(self):
             return config.getOptValue("noise")>0
     
-        def redemarrer(self,constellation,sigma):
-            self.solution.redemarrer(constellation)
-            for (s,cca) in self.grapheDependances.getComposantes():
+        def restart(self,constellation,sigma):
+            self.solution.restart(constellation)
+            for (s,cca) in self.getGraphComponents().getComponents():
                 self.setSolCCA(s,cca,SolCCA(cca,s))
         
-        def initIteration(self,constellation,sigma,super_iter):
-            self.initRequetes(constellation,sigma,conserve_old=False)
-            if super_iter>0 or self.modeBruitageActive():
-                self.redemarrer(constellation,sigma)
-            if super_iter!=0 and self.modeDestructionActive():
-                self.detruire(constellation)
-            self.notifierSansEvenement(constellation)
+        def initIteration(self,constellation,sigma,superIter):
+            self.initRequests(constellation,sigma,conserveOld=False)
+            if superIter>0 or self.isActiveNoisingMode():
+                self.restart(constellation,sigma)
+            if superIter!=0 and self.isActiveDestructionMode():
+                self.destroy(constellation)
+            self.notifyNoEvent(constellation)
                 
                 
-        def detruire(self,constellation):
+        def destroy(self,constellation):
             printOpen("Destruction",c='m')
             if config.getOptValue("verif"):
-                self.verifierSolution(constellation)        
+                self.verifySolution(constellation)        
             
-            couvertes = self.requetesCouvertes()
-            detruire = rd.choices(couvertes,k=int(len(couvertes)*config.getOptValue("destroy_BPCCAS")))
-            if -1 in detruire:
-                detruire.remove(-1)
-            modes_a_retirer = [(r,m) for (r,m) in self.getModesRetenus() if r in detruire and r!=-1]
-            self.setModesRetenus([(r,m) for (r,m) in self.getModesRetenus() if (r, m) not in modes_a_retirer],constellation)
-            activites_a_retirer = [(s,a) for (r,m) in modes_a_retirer for (s,a) in constellation.getRequete(r).getMode(m).getCouples()]
-            activites_par_cca = {}
-            for (s,a) in activites_a_retirer:
-                id_cca = self.grapheDependances.getActiviteCCA(a)
-                if id_cca not in activites_par_cca:
-                    activites_par_cca[id_cca] = []
-                activites_par_cca[id_cca].append(a)
-            for (s,cca) in activites_par_cca:
-                self.getSolCCA(s,cca).retirerListeActivites(constellation,activites_par_cca[cca])
+            fulfilled = self.fulfilledRequests()
+            destroy = rd.choices(fulfilled,k=int(len(fulfilled)*config.getOptValue("destroy_BPCCAS")))
+            if -1 in destroy:
+                destroy.remove(-1)
+            modesToRemove = [(r,m) for (r,m) in self.getSelectedModes() if r in destroy and r!=-1]
+            self.setSelectedModes([(r,m) for (r,m) in self.getSelectedModes() if (r, m) not in modesToRemove],constellation)
+            activitiesToRemove = [(s,a) for (r,m) in modesToRemove for (s,a) in constellation.getRequest(r).getMode(m).getPairs()]
+            activitiesByCCA = {}
+            for (s,a) in activitiesToRemove:
+                idCCA = self.getGraphComponents().getActivityCCA(a)
+                if idCCA not in activitiesByCCA:
+                    activitiesByCCA[idCCA] = []
+                activitiesByCCA[idCCA].append(a)
+            for (s,cca) in activitiesByCCA:
+                self.getSolCCA(s,cca).removeActivityList(constellation,activitiesByCCA[cca])
             if config.getOptValue("verif"):
-                self.verifierSolution(constellation)
-            self.MAJDestruction(constellation)
-            printColor(str(len(detruire))+" requêtes detruites",c='y')
+                self.verifySolution(constellation)
+            self.updateDestruction(constellation)
+            printColor(str(len(destroy))+" destroyed requests",c='y')
             printClose()
             
-        def MAJDestruction(self,constellation):
-            couvertes = self.requetesCouvertes()
-            for r in constellation.getRequetes():
-                if r not in couvertes:
-                    constellation.getRequete(r).init = False
-                    m = constellation.getRequete(r).getModeCourant(constellation).getId()
-                    self.modes_courants[r] = m
+        def updateDestruction(self,constellation):
+            fulfilled = self.fulfilledRequests()
+            for r in constellation.getRequests():
+                if r not in fulfilled:
+                    constellation.getRequest(r).init = False
+                    m = constellation.getRequest(r).getCurrentMode(constellation).getId()
+                    self.currentModes[r] = m
                     assert(m is not None)
             # score candidats modes avant la planif
             modes = []
-            for r in self.requetes_candidates:
+            for r in self.candidateRequests:
                 modes.append((r,0))
-            self.resetScoreDestruction(constellation,couvertes)
-            self.solution.historique.score_moyen_avant = constellation.scoreObsMoyenne(modes)
-            self.solution.historique.scoreObsMoyenne = self.solution.historique.score_moyen_avant
+            self.resetScoreDestruction(constellation,fulfilled)
+            self.solution.history.meanScoreBefore = constellation.meanObservationScore(modes)
+            self.solution.history.meanObservationScore = self.solution.history.meanScoreBefore
             
             
         def creerMappingCCASlaves(self):
             if MPI.COMM_WORLD.Get_size()>1:
-                self.cca_slaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
-                tailles = []
-                for id_cca in self.grapheDependances.getComposantes():
-                    taille =  self.grapheDependances.getTailleComposante(id_cca)
-                    reverse_insort(tailles,(taille,id_cca))
+                self.ccaSlaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
+                sizes = []
+                for idCCA in self.getGraphComponents().getComponents():
+                    size =  self.getGraphComponents().getComponentSize(idCCA)
+                    reverse_insort(sizes,(size,idCCA))
                 cpu = 0
-                for (taille,id_cca) in tailles:
-                    self.cca_slaves[cpu+1].append(id_cca)
+                for (size,idCCA) in sizes:
+                    self.ccaSlaves[cpu+1].append(idCCA)
                     cpu = (cpu + 1) % (MPI.COMM_WORLD.Get_size()-1)
-                for cpu in self.cca_slaves:
-                    MPI.COMM_WORLD.send({"cca":self.cca_slaves[cpu]},dest=cpu)
+                for cpu in self.ccaSlaves:
+                    MPI.COMM_WORLD.send({"cca":self.ccaSlaves[cpu]},dest=cpu)
             else:
-                self.cca_slaves = {1 : self.grapheDependances.getComposantes()}
+                self.ccaSlaves = {1 : self.getGraphComponents().getComponents()}
          
-        def mappingCCATaille(self,tailles):
-            # tailles : liste (cca,nb activites a inserer)
-            ccas = sorted(tailles,key=itemgetter(0),reverse=True)
+        def mappingCCASize(self,sizes):
+            # sizes : liste (cca,nb activites a inserer)
+            ccas = sorted(sizes,key=itemgetter(0),reverse=True)
             if MPI.COMM_WORLD.Get_size()==1:
-                self.cca_slaves = {0:[]}
+                self.ccaSlaves = {0:[]}
                 for (taille,cca) in ccas:
-                    self.cca_slaves[0].append(cca)
+                    self.ccaSlaves[0].append(cca)
             else:
-                self.cca_slaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
+                self.ccaSlaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
                 cpu = 0
-                for (taille,id_cca) in ccas:
-                    self.cca_slaves[cpu+1].append(id_cca)
+                for (taille,idCCA) in ccas:
+                    self.ccaSlaves[cpu+1].append(idCCA)
                     cpu = (cpu + 1) % (MPI.COMM_WORLD.Get_size()-1)
     
         """
@@ -132,128 +132,123 @@ else:
                             RESOLUTION
             =============================================== 
         """
-        def reinsererMode(self,constellation,r):
+        def reinsertMode(self,constellation,r):
             pass
     
-        def analyserMessage(self,data,constellation,freeCPUs,mailbox):
+        def analyzeMessage(self,data,constellation,freeCPUs,mailbox):
             # les sequences solutions ne sont pas transmises ici car les cca sont statiques. 
             # Les slaves ont deja un exemplaire
             start = time()
-            self.solution.historique.enregistrerReceptionMessage(data)
+            self.solution.history.registerMessageReceiving(data)
             i = data['source']
-            #del self.job_slaves[i]['time']
+            #del self.jobSlaves[i]['time']
             assert(i not in freeCPUs)
             bisect.insort(freeCPUs,i)
             cpu_time = data['cpu_time']
-            explications = data['explications']
-            indetermines = data['indetermines']
-            return explications,indetermines
+            explainations = data['explainations']
+            undetermined = data['undetermined']
+            return explainations,undetermined
         
-        def retirerAnciennesActivites(self,constellation,r,m):
-            for (s,o) in constellation.getRequete(r).getMode(m-1).getCouples():
-                if (s,o) not in constellation.getRequete(r).getMode(m).getCouples():
-                    (s,cca) = self.grapheDependances.getActiviteCCA(o)
+        def removeAncientActivities(self,constellation,r,m):
+            for (s,o) in constellation.getRequest(r).getMode(m-1).getPairs():
+                if (s,o) not in constellation.getRequest(r).getMode(m).getPairs():
+                    (s,cca) = self.getGraphComponents().getActivityCCA(o)
                     if o in self.getSolCCA(s,cca).getSequence():
-                        self.getSolCCA(s,cca).retirerActivite(constellation,o)
+                        self.getSolCCA(s,cca).removeActivity(constellation,o)
         
-        def analyserResultatsAsynchrone(self,constellation,freeCPUs,mailbox):
-            failed = list(self.explications.keys())+self.echecs_sans_explications
-            modes_reussis = []
-            for i in self.job_slaves:
-                for cca in self.job_slaves[i]:
-                    for (r,m,score) in self.job_slaves[i][cca]:
-                        if (r,m) not in modes_reussis and (r,m) not in failed and (r,m) not in self.indetermines:
-                            modes_reussis.append((r,m))
-            for (r,m) in self.explications:
-                if len(self.explications[(r,m)])>0:
-                    m_new = constellation.getRequete(r).getModeSuivant(self.explications[(r,m)],constellation)
+        def analyzeAsynchronousResults(self,constellation,freeCPUs,mailbox):
+            failed = list(self.explainations.keys())+self.failuresWithoutExplainations
+            succeededModes = []
+            for i in self.jobSlaves:
+                for cca in self.jobSlaves[i]:
+                    for (r,m,score) in self.jobSlaves[i][cca]:
+                        if (r,m) not in succeededModes and (r,m) not in failed and (r,m) not in self.undetermined:
+                            succeededModes.append((r,m))
+            for (r,m) in self.explainations:
+                if len(self.explainations[(r,m)])>0:
+                    m_new = constellation.getRequest(r).getNextMode(self.explainations[(r,m)],constellation)
                     if m_new is None:
-                        self.requetes_candidates.remove(r)
+                        self.candidateRequests.remove(r)
                     else:
-                        self.retirerAnciennesActivites(constellation,r,m_new.getId())
-                        
-                #else:
-                #    self.reinsererMode(constellation,r)
+                        self.removeAncientActivities(constellation,r,m_new.getId())
             
-            for rm in modes_reussis:
-                if rm not in self.getModesRetenus():
-                    self.ajouterModeRetenu(rm,constellation)
-            self.insererSequences(constellation,self.sequences)
+            for rm in succeededModes:
+                if rm not in self.getSelectedModes():
+                    self.addSelectedMode(rm,constellation)
+            self.insertSequences(constellation,self.sequences)
             
-            printOpen("Résultats",c='b')
-            printOpen("modes ratés avec explications :",len(list(self.explications.keys())),c='r')
-            printColor((list(self.explications.keys())),c='r')
+            printOpen("Results",c='b')
+            printOpen("modes that failed with explaination:",len(list(self.explainations.keys())),c='r')
+            printColor((list(self.explainations.keys())),c='r')
             printClose()
-            printOpen("modes ratés sans explications :",len(self.echecs_sans_explications),c='m')
-            printColor(self.echecs_sans_explications,c='m')
+            printOpen("modes that failed without explaination:",len(self.failuresWithoutExplainations),c='m')
+            printColor(self.failuresWithoutExplainations,c='m')
             printClose()
-            printOpen("modes réussis :",len(modes_reussis),c='g')
-            printColor((modes_reussis),c='g')
+            printOpen("modes that succeeded:",len(succeededModes),c='g')
+            printColor((succeededModes),c='g')
             printClose()
-            printOpen("modes indeterminés:",len(self.indetermines),c='w')
-            printColor((self.indetermines),c='w')
+            printOpen("undetermined modes:",len(self.undetermined),c='w')
+            printColor((self.undetermined),c='w')
             printClose()
             printClose()
-            #die("AnalyserResultats")
             return failed
         
-        def analyserResultats(self,constellation,freeCPUs,mailbox):
+        def analyzeResults(self,constellation,freeCPUs,mailbox):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             start_iteration = time()
             if comm.Get_size()==1:
-                messages = [self.localSlave.getResultat()]
+                messages = [self.localSlave.getResults()]
             else:
                 messages = mailbox.readMessages()
             
-            explications = {}
+            explainations = {}
             sequences = {}
-            indetermines = []
+            undetermined = []
             for data in messages:
                 if data is not None:
                     for cca in data['sequences']:
                         sequences[cca] = data['sequences'][cca]
-                    exp_cpu,inde = self.analyserMessage(data,constellation,freeCPUs,mailbox)
+                    expCPU,inde = self.analyzeMessage(data,constellation,freeCPUs,mailbox)
                     for (r,m) in inde:
-                        if (r,m) not in indetermines:
-                            indetermines.append((r,m))
-                    for (r,m) in exp_cpu:
-                        if (r,m) not in explications:
-                            explications[(r,m)] = []
-                        explications[(r,m)] += exp_cpu[(r,m)]
+                        if (r,m) not in undetermined:
+                            undetermined.append((r,m))
+                    for (r,m) in expCPU:
+                        if (r,m) not in explainations:
+                            explainations[(r,m)] = []
+                        explainations[(r,m)] += expCPU[(r,m)]
                    
-            modes_reussis = []
-            for i in self.job_slaves:
-                for cca in self.job_slaves[i]:
-                    for (r,m,score) in self.job_slaves[i][cca]:
-                        if (r,m) not in modes_reussis and (r,m) not in explications and (r,m) not in indetermines:
-                            modes_reussis.append((r,m))
+            succeededModes = []
+            for i in self.jobSlaves:
+                for cca in self.jobSlaves[i]:
+                    for (r,m,score) in self.jobSlaves[i][cca]:
+                        if (r,m) not in succeededModes and (r,m) not in explainations and (r,m) not in undetermined:
+                            succeededModes.append((r,m))
             
-            for (r,m) in explications:
-                m_new = constellation.getRequete(r).getModeSuivant(explications[(r,m)],constellation)
+            for (r,m) in explainations:
+                m_new = constellation.getRequest(r).getNextMode(explainations[(r,m)],constellation)
                 if m_new is None:
-                    self.requets_candidates.remove(r)
+                    self.requestCandidates.remove(r)
             
-            for rm in modes_reussis:
-                if rm not in self.getModesRetenus():
-                    self.ajouterModeRetenu(rm,constellation)
-            self.insererSequences(constellation,sequences)
+            for rm in succeededModes:
+                if rm not in self.getSelectedModes():
+                    self.addSelectedMode(rm,constellation)
+            self.insertSequences(constellation,sequences)
             
-            printOpen("Résultats",c='b')
-            printColor("modes ratés :",list(explications.keys()),c='r')
-            printColor("modes réussis :",modes_reussis,c='g')
-            printColor("modes indeterminés:",indetermines,c='c')
+            printOpen("Result",c='b')
+            printColor("modes that failed:",list(explainations.keys()),c='r')
+            printColor("modes that succeeded:",succeededModes,c='g')
+            printColor("undetermined modes:",undetermined,c='c')
             printClose()
-            #die("AnalyserResultats")
-            return list(explications.keys())
+            return list(explainations.keys())
         
-        def insererSequences(self,constellation,sequences):
-            requetes_retenues = [x[0] for x in self.getModesRetenus()]
+        def insertSequences(self,constellation,sequences):
+            requests_retenues = [x[0] for x in self.getSelectedModes()]
             for (s,cca) in sequences:
-                seq = [a for a in sequences[(s,cca)] if constellation.getRequeteActivite(a) in requetes_retenues]
-                self.getSolCCA(s,cca).setSequence(constellation,seq,self.modeleDeTransition)
+                seq = [a for a in sequences[(s,cca)] if constellation.getRequestActivity(a) in requests_retenues]
+                self.getSolCCA(s,cca).setSequence(constellation,seq,self.transitionModel)
     
-        def resoudre(self,constellation,mailbox):
+        def resolve(self,constellation,mailbox):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             size = comm.Get_size()
@@ -262,302 +257,296 @@ else:
                 freeCPUs = [0] # un seul coeur => slave local
             else:
                 freeCPUs = list(range(1,size))
-            last_record = 0
+            lastRecord = 0
             failed = []
-            super_iter = 0
+            superIter = 0
             it = 0
-            while time()-self.start_date<self.tlim:
-                sigma = config.getOptValue("noise")*super_iter
-                self.initIteration(constellation,sigma,super_iter)
-                if (self.modeBruitageActive() or self.modeDestructionActive()):
+            while time()-self.startDate<self.tlim:
+                sigma = config.getOptValue("noise")*superIter
+                self.initIteration(constellation,sigma,superIter)
+                if (self.isActiveNoisingMode() or self.isActiveDestructionMode()):
                     couleur = self.colors['iteration']
-                    self.afficherInfo(time(),self.start_date,constellation,color=couleur,add={"sigma":sigma},title='DEBUT ITERATION '+str(super_iter))
-                while time()-self.start_date<config.getOptValue("time") and (len(failed)!=0 or it==0):
+                    self.displayInformation(time(),self.startDate,constellation,color=couleur,add={"sigma":sigma},title='START ITERATION '+str(superIter))
+                while time()-self.startDate<config.getOptValue("time") and (len(failed)!=0 or it==0):
                     start_it = time()
-                    self.envoyerTacheAsynchrone(constellation,freeCPUs,mailbox,failed)
-                    failed = self.analyserResultatsAsynchrone(constellation,freeCPUs,mailbox)
-                    if time()-self.start_date<config.getOptValue("time") and (len(failed)!=0 or it==0):
-                        self.notifierSansEvenement(constellation)
+                    self.sendAsynchronousTask(constellation,freeCPUs,mailbox,failed)
+                    failed = self.analyzeAsynchronousResults(constellation,freeCPUs,mailbox)
+                    if time()-self.startDate<config.getOptValue("time") and (len(failed)!=0 or it==0):
+                        self.notifyNoEvent(constellation)
                         couleur = self.colors['no_event']
-                        self.afficherInfo(time(),self.start_date,constellation,color=couleur,title="RESULTAT SOUS-ITERATION " +str(it))
+                        self.displayInformation(time(),self.startDate,constellation,color=couleur,title="RESULT SUB-ITERATION " +str(it))
                     else:
                         break
                     it += 1
                     temps = time()
                     if config.getOptValue("verif"):
-                        self.verifierCCA(constellation)
+                        self.verifyCCAs(constellation)
                     step()
                 if config.getOptValue("verif"):
-                    self.verifierSolution(constellation)
-                self.notifierFinIteration(constellation)
-                #couleur = self.colors['iteration']
-                #self.afficherInfo(time(),self.start_date,constellation,color=couleur,add={"sigma":sigma},title='FIN ITERATION '+str(super_iter))
-                super_iter += 1 
+                    self.verifySolution(constellation)
+                self.notifyEndIteration(constellation)
+                superIter += 1 
                 it = 0
-                up = self.majorantRecompense(constellation)[0]
-                
-                if (not self.modeBruitageActive() and not self.modeDestructionActive()) :#or  self.gapRecompense(constellation) and self.gapTemps(constellation) :
+                if (not self.isActiveNoisingMode() and not self.isActiveDestructionMode()):
                     break
             
-                
-            self.terminerProcessus()
-            self.notifierFinExecution(constellation)
+            self.terminateProcess()
+            self.notifyEndExecution(constellation)
             couleur = self.colors['end']
-            self.afficherInfo(time(),self.start_date,constellation,color=couleur,title='FIN')
+            self.displayInformation(time(),self.startDate,constellation,color=couleur,title='END')
     
-        def mappingCCAObservationsCourantes(self,constellation,failed):
-            mapping_obs = {}
+        def mappingCCACurrentObservations(self,constellation,failed):
+            mappingObs = {}
             
             del_r = []
-            for r in self.requetes_candidates:
-                if r in self.requetesCouvertes():
+            for r in self.candidateRequests:
+                if r in self.fulfilledRequests():
                     del_r.append(r)
             for r in del_r:
-                self.requetes_candidates.remove(r)
+                self.candidateRequests.remove(r)
                 
-            for r in self.requetes_candidates:
-                m = constellation.getRequete(r).getModeCourant(constellation).getId()
-                score = self.recompenseBruitee(constellation,r,m)
-                for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-                    id_cca = self.grapheDependances.getActiviteCCA(o)
-                    if id_cca not in mapping_obs:
-                        mapping_obs[id_cca] = {}
-                    if (r,m,score) not in mapping_obs[id_cca]:
-                        mapping_obs[id_cca][(r,m,score)] = []
-                    mapping_obs[id_cca][(r,m,score)].append(o)
-            mapping_obs,sequences_cca = self.filtrer(constellation,mapping_obs,failed)
-            return mapping_obs,sequences_cca
+            for r in self.candidateRequests:
+                m = constellation.getRequest(r).getCurrentMode(constellation).getId()
+                score = self.noiseUtility(constellation,r,m)
+                for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+                    idCCA = self.getGraphComponents().getActivityCCA(o)
+                    if idCCA not in mappingObs:
+                        mappingObs[idCCA] = {}
+                    if (r,m,score) not in mappingObs[idCCA]:
+                        mappingObs[idCCA][(r,m,score)] = []
+                    mappingObs[idCCA][(r,m,score)].append(o)
+            mappingObs,ccaSequences = self.filterFailedObservations(constellation,mappingObs,failed)
+            return mappingObs,ccaSequences
         
-        def nouvelleRequete(self,constellation,id_cca,r,m):
-            test_exp = r in [x[0] for x in self.explications.keys()]
-            precedent_absent_cca = True
+        def newRequest(self,constellation,idCCA,r,m):
+            testExplaination = r in [x[0] for x in self.explainations.keys()]
+            previousAbsentInCCA = True
             if m>0:
-                for (s,o) in constellation.getRequete(r).getMode(m-1).getCouples():
-                    if self.grapheDependances.getActiviteCCA(o)==id_cca:
-                        precedent_absent_cca = False
+                for (s,o) in constellation.getRequest(r).getMode(m-1).getPairs():
+                    if self.getGraphComponents().getActivityCCA(o)==idCCA:
+                        previousAbsentInCCA = False
                         break
-            return test_exp and precedent_absent_cca
+            return testExplaination and previousAbsentInCCA
         
-        def rejeterMode(self,garder,id_cca,r,m,score,mapping_obs,del_modes,sequences_cca):
-            mode_rejete = 0
-            activites_rejetees = 0
-            if (r,m,score) in mapping_obs[id_cca]:
-                for o in mapping_obs[id_cca][(r,m,score)]:
-                    if o in sequences_cca[id_cca]: # on est pas sur (modes rates, modes indetermines)
-                        sequences_cca[id_cca].remove(o) 
-            if (r,m) in self.getModesRetenus() and (r,m) not in del_modes:
-                del_modes.append((r,m))
-                mode_rejete += 1
-                activites_rejetees += len(mapping_obs[id_cca][(r,m,score)])
-            return mode_rejete,activites_rejetees
+        def rejectMode(self,keep,idCCA,r,m,score,mappingObs,modesToDelete,ccaSequences):
+            rejectedModes = 0
+            rejectedActivities = 0
+            if (r,m,score) in mappingObs[idCCA]:
+                for o in mappingObs[idCCA][(r,m,score)]:
+                    if o in ccaSequences[idCCA]: # on est pas sur (modes rates, modes undetermined)
+                        ccaSequences[idCCA].remove(o) 
+            if (r,m) in self.getSelectedModes() and (r,m) not in modesToDelete:
+                modesToDelete.append((r,m))
+                rejectedModes += 1
+                rejectedActivities += len(mappingObs[idCCA][(r,m,score)])
+            return rejectedModes,rejectedActivities
         
-        def conserverMode(self,r,m,score,mapping_obs,sequences_cca,id_cca,cca_conservees):
-            modes_conserves = 0
-            activites_conservees = 0
-            if (r,m) in self.getModesRetenus():
-                modes_conserves += 1
-                activites_conservees += len(mapping_obs[id_cca][(r,m,score)])
-                del mapping_obs[id_cca][(r,m,score)]
+        def keepMode(self,r,m,score,mappingObs,ccaSequences,idCCA,keptCCAs):
+            keptModes = 0
+            keptActivities = 0
+            if (r,m) in self.getSelectedModes():
+                keptModes += 1
+                keptActivities += len(mappingObs[idCCA][(r,m,score)])
+                del mappingObs[idCCA][(r,m,score)]
             else:
-                for o in mapping_obs[id_cca][(r,m,score)]:
-                    if o in sequences_cca[id_cca]: # modes indetermines (peut etre partiellement satisfaits)
-                        mapping_obs[id_cca][(r,m,score)].remove(o)
-                        if mapping_obs[id_cca][(r,m,score)]==[]:
-                            del mapping_obs[id_cca][(r,m,score)]
-            if mapping_obs[id_cca] == {}:
-                id_cca = id_cca
-                cca_conservees.append(id_cca)
-            return modes_conserves,activites_conservees
+                for o in mappingObs[idCCA][(r,m,score)]:
+                    if o in ccaSequences[idCCA]: # modes undetermined (peut etre partiellement satisfaits)
+                        mappingObs[idCCA][(r,m,score)].remove(o)
+                        if mappingObs[idCCA][(r,m,score)]==[]:
+                            del mappingObs[idCCA][(r,m,score)]
+            if mappingObs[idCCA] == {}:
+                idCCA = idCCA
+                keptCCAs.append(idCCA)
+            return keptModes,keptActivities
             
-        def filtrer(self,constellation,mapping_obs,failed):
-                sequences_cca = {}
-                del_modes = []
-                modes_conserves = 0
-                activites_conservees = 0
-                cca_conservees = []
-                modes_rejetes = 0
-                activites_rejetees = 0
+        def filterFailedObservations(self,constellation,mappingObs,failed):
+                ccaSequences = {}
+                modesToDelete = []
+                keptModes = 0
+                keptActivities = 0
+                keptCCAs = []
+                rejectedModes = 0
+                rejectedActivities = 0
                 
-                            
-                for id_cca in mapping_obs:
-                    tri = list(mapping_obs[id_cca].keys())
+                for idCCA in mappingObs:
+                    tri = list(mappingObs[idCCA].keys())
                     modes = sorted(tri,key=lambda x : (x[0]==-1,x[2][0],-x[0]),reverse=True)
-                    garder = True
-                    modes_candidats = [] # ceux qu'on conserve pas besoin de redemander de les inserer
-                    s,cca = id_cca
-                    sequences_cca[id_cca] = self.getSolCCA(s,cca).getSequence().copy()
+                    keep = True
+                    candidatesModes = [] # ceux qu'on conserve pas besoin de redemander de les inserer
+                    s,cca = idCCA
+                    ccaSequences[idCCA] = self.getSolCCA(s,cca).getSequence().copy()
                     for (r,m,score) in modes:
-                        if garder:
-                            res = self.conserverMode(r,m,score,mapping_obs,sequences_cca,id_cca,cca_conservees)
-                            modes_conserves += res[0]
-                            activites_conservees += res[1]
+                        if keep:
+                            res = self.keepMode(r,m,score,mappingObs,ccaSequences,idCCA,keptCCAs)
+                            keptModes += res[0]
+                            keptActivities += res[1]
                         else:
-                            res = self.rejeterMode(garder,id_cca,r,m,score,mapping_obs,del_modes,sequences_cca)
-                            modes_rejetes += res[0]
-                            activites_rejetees += res[1]
+                            res = self.rejectMode(keep,idCCA,r,m,score,mappingObs,modesToDelete,ccaSequences)
+                            rejectedModes += res[0]
+                            rejectedActivities += res[1]
                         # si une nouvelle requete arrive l'ordre change potentiellement
-                        if not config.getOptValue("conserve") and ((r,m) in self.explications or self.nouvelleRequete(constellation,id_cca,r,m)):
-                            garder = False
+                        if not config.getOptValue("conserve") and ((r,m) in self.explainations or self.newRequest(constellation,idCCA,r,m)):
+                            keep = False
                             
-                for id_cca in cca_conservees:
-                    del mapping_obs[id_cca]
-                for x in del_modes:
-                    self.retirerModeRetenu(x)
-                printColor("Récupération de "+str(activites_conservees)+" activités "+str(modes_conserves)+" modes partiels et "+str(len(cca_conservees))+" CCAs",c='y')
-                printColor("Rejet de "+str(activites_rejetees)+" activités "+str(modes_rejetes)+" modes partiels",c='y')
-                return mapping_obs,sequences_cca
+                for idCCA in keptCCAs:
+                    del mappingObs[idCCA]
+                for x in modesToDelete:
+                    self.removeSelectedMode(x)
+                printColor("Recycling "+str(keptActivities)+" activities "+str(keptModes)+" partial modes and "+str(len(keptCCAs))+" CCAs",c='y')
+                printColor("Rejecting "+str(rejectedActivities)+" activities "+str(rejectedModes)+" partial modes",c='y')
+                return mappingObs,ccaSequences
             
-        def repartirTravailSlaves(self,mapping_obs,sequences_cca):
-            sequences_slaves = {}
-            tailles = [(sum([len(mapping_obs[id_cca][x]) for x in mapping_obs[id_cca]]),id_cca) for id_cca in mapping_obs]
-            self.mappingCCATaille(tailles)
-            job_slaves = {}
-            for cpu in self.cca_slaves:
-                sequences_slaves[cpu] = {}
-                job_slaves[cpu] = {}
-                for id_cca in self.cca_slaves[cpu]:
-                    if id_cca in mapping_obs:
-                        sequences_slaves[cpu][id_cca] = sequences_cca[id_cca]
-                        job_slaves[cpu][id_cca] = mapping_obs[id_cca]
-            del_job = []
-            for cpu in job_slaves:
-                if job_slaves[cpu]=={}:
-                    del_job.append(cpu)
-            for cpu in del_job:
-                del job_slaves[cpu]
-            self.job_slaves = job_slaves
-            return job_slaves,sequences_slaves
+        def dispatchWorkToSlaves(self,mappingObs,ccaSequences):
+            sequencesSlave = {}
+            sizes = [(sum([len(mappingObs[idCCA][x]) for x in mappingObs[idCCA]]),idCCA) for idCCA in mappingObs]
+            self.mappingCCASize(sizes)
+            jobSlaves = {}
+            for cpu in self.ccaSlaves:
+                sequencesSlave[cpu] = {}
+                jobSlaves[cpu] = {}
+                for idCCA in self.ccaSlaves[cpu]:
+                    if idCCA in mappingObs:
+                        sequencesSlave[cpu][idCCA] = ccaSequences[idCCA]
+                        jobSlaves[cpu][idCCA] = mappingObs[idCCA]
+            jobsToDelete = []
+            for cpu in jobSlaves:
+                if jobSlaves[cpu]=={}:
+                    jobsToDelete.append(cpu)
+            for cpu in jobsToDelete:
+                del jobSlaves[cpu]
+            self.jobSlaves = jobSlaves
+            return jobSlaves,sequencesSlave
     
-        def lectureAsynchrone(self,constellation,freeCPUs,mailbox,echecs,indetermines,sequences):
+        def asynchronousReading(self,constellation,freeCPUs,mailbox,failures,undetermined,sequences):
             count = 0
             for data in mailbox.readMessages():
                 if data is not None:
                     count += 1
                     for cca in data['sequences']:
                         self.sequences[cca] = data['sequences'][cca]
-                    exp_cpu,inde = self.analyserMessage(data,constellation,freeCPUs,mailbox)
+                    expCPU,inde = self.analyzeMessage(data,constellation,freeCPUs,mailbox)
                     for (r,m) in inde:
-                        if (r,m) not in indetermines:
-                            indetermines.append((r,m))
-                    for (r,m) in exp_cpu:
-                        if (r,m) not in echecs:
-                            echecs[(r,m)] = []
-                        echecs[(r,m)] += exp_cpu[(r,m)]
+                        if (r,m) not in undetermined:
+                            undetermined.append((r,m))
+                    for (r,m) in expCPU:
+                        if (r,m) not in failures:
+                            failures[(r,m)] = []
+                        failures[(r,m)] += expCPU[(r,m)]
             return count
         
-        def envoiAsynchrone(self,ccas,mapping_obs,sequences_cca,freeCPUs,mailbox,job_slaves):
+        def asynchronousSend(self,ccas,mappingObs,ccaSequences,freeCPUs,mailbox,jobSlaves):
             count = 0
             while ccas!=[] and freeCPUs!=[]:
-                (taille,id_cca) = ccas.pop(0)
-                if id_cca in mapping_obs:
+                (taille,idCCA) = ccas.pop(0)
+                if idCCA in mappingObs:
                     cpu = freeCPUs.pop()
-                    if cpu not in job_slaves:
-                        job_slaves[cpu] = {}
-                    job_slaves[cpu][id_cca] = mapping_obs[id_cca]
-                    data = {"taches":{id_cca:job_slaves[cpu][id_cca]},"sequences":{id_cca:sequences_cca[id_cca]}}
-                    mailbox.demanderTache(data,cpu)
-                    self.solution.historique.enregistrerEnvoi(cpu)
+                    if cpu not in jobSlaves:
+                        jobSlaves[cpu] = {}
+                    jobSlaves[cpu][idCCA] = mappingObs[idCCA]
+                    data = {"taches":{idCCA:jobSlaves[cpu][idCCA]},"sequences":{idCCA:ccaSequences[idCCA]}}
+                    mailbox.askForTask(data,cpu)
+                    self.solution.history.registerMessageSending(cpu)
                 else:
                     count += 1
             return count
         
-        def rechercheStabilite(self,constellation,r,CCAStables,CCAInstables,echecs):
-            m = constellation.getRequete(r).getModeCourant(constellation).getId()
-            if (r,m) in echecs:  # r a échoué
+        def stabilityAnalysis(self,constellation,r,CCAStables,CCAInstables,failures):
+            m = constellation.getRequest(r).getCurrentMode(constellation).getId()
+            if (r,m) in failures:  # r a échoué
                 stable = False
             else:
                 stable = True
-                for cca in constellation.getRequete(r).getCCAPresentes(self.grapheDependances):
+                for cca in constellation.getRequest(r).getCCAPresentes(self.getGraphComponents()):
                     if cca in CCAInstables:
                         stable = False
                         break
             return stable
         
-        def genererExplicationRequete(self,constellation,r,echecs,explications,CCAStables):
-            m = constellation.getRequete(r).getModeCourant(constellation).getId()
-            if (r,m) in echecs:
-                explications[(r,m)] = []
-                for cca in constellation.getRequete(r).getCCAPresentes(self.grapheDependances):
+        def generateRequestExplaination(self,constellation,r,failures,explainations,CCAStables):
+            m = constellation.getRequest(r).getCurrentMode(constellation).getId()
+            if (r,m) in failures:
+                explainations[(r,m)] = []
+                for cca in constellation.getRequest(r).getCCAPresentes(self.getGraphComponents()):
                     if cca in CCAStables:
-                        cca_echecs = [o for (s,o) in constellation.getRequete(r).getModeCourant(constellation).getCouples() if self.grapheDependances.getActiviteCCA(o)==cca and o in echecs[(r,m)]]
-                        explications[(r,m)] += cca_echecs
-                if len(explications[(r,m)])==0:
-                    del explications[(r,m)]
-                    self.echecs_sans_explications.append((r,m))
+                        ccaFailures = [o for (s,o) in constellation.getRequest(r).getCurrentMode(constellation).getPairs() if self.getGraphComponents().getActivityCCA(o)==cca and o in failures[(r,m)]]
+                        explainations[(r,m)] += ccaFailures
+                if len(explainations[(r,m)])==0:
+                    del explainations[(r,m)]
+                    self.failuresWithoutExplainations.append((r,m))
          
-        def propagerInstabilite(self,constellation,r,CCAStables,CCAInstables):
-            for cca in constellation.getRequete(r).getCCAPresentes(self.grapheDependances):
+        def propagateInstability(self,constellation,r,CCAStables,CCAInstables):
+            for cca in constellation.getRequest(r).getCCAPresentes(self.getGraphComponents()):
                 if cca in CCAStables:
                     CCAStables.remove(cca)
                     CCAInstables.append(cca)
         
-        def genererExplications(self,constellation,echecs):
+        def generateExplainations(self,constellation,failures):
             if not config.getOptValue("stable_exp"):
-                self.echecs_sans_explications = []
-                self.explications = echecs
+                self.failuresWithoutExplainations = []
+                self.explainations = failures
             else:
-                self.echecs_sans_explications = []
-                explications = {}
-                requetes = [r for r in constellation.getRequetes() if constellation.getRequete(r).getModeCourant(constellation) is not None]
-                CCAStables = [id_cca for id_cca in self.grapheDependances.getComposantes()]
+                self.failuresWithoutExplainations = []
+                explainations = {}
+                requests = [r for r in constellation.getRequests() if constellation.getRequest(r).getCurrentMode(constellation) is not None]
+                CCAStables = [idCCA for idCCA in self.getGraphComponents().getComponents()]
                 CCAInstables = []
-                requetes_triees = sorted(requetes,key = lambda r : (r==-1,self.recompenseBruitee(constellation,r,constellation.getRequete(r).getModeCourant(constellation).getId())[0],-r),reverse=True)
-                for r in requetes_triees:
-                    stable = self.rechercheStabilite(constellation,r,CCAStables,CCAInstables,echecs)
-                    self.genererExplicationRequete(constellation,r,echecs,explications,CCAStables)
+                requests_triees = sorted(requests,key = lambda r : (r==-1,self.noiseUtility(constellation,r,constellation.getRequest(r).getCurrentMode(constellation).getId())[0],-r),reverse=True)
+                for r in requests_triees:
+                    stable = self.stabilityAnalysis(constellation,r,CCAStables,CCAInstables,failures)
+                    self.generateRequestExplaination(constellation,r,failures,explainations,CCAStables)
                     if not stable:
-                        self.propagerInstabilite(constellation,r,CCAStables,CCAInstables)
-                self.explications = explications
+                        self.propagateInstability(constellation,r,CCAStables,CCAInstables)
+                self.explainations = explainations
                     
-        def lectureEnvoiSimultanes(self,constellation,mapping_obs,sequences_cca,mailbox,freeCPUs):
+        def simultaneousSendAndRead(self,constellation,mappingObs,ccaSequences,mailbox,freeCPUs):
             t1 = time()
-            tailles = [(sum([len(mapping_obs[id_cca][x]) for x in mapping_obs[id_cca]]),id_cca) for id_cca in mapping_obs]
-            ccas = sorted(tailles,key=itemgetter(0),reverse=True)
-            n_cca = len(ccas)
+            sizes = [(sum([len(mappingObs[idCCA][x]) for x in mappingObs[idCCA]]),idCCA) for idCCA in mappingObs]
+            ccas = sorted(sizes,key=itemgetter(0),reverse=True)
+            nCCAs = len(ccas)
             ccas_done = 0
-            job_slaves = {}
-            echecs = {}
-            indetermines = []
+            jobSlaves = {}
+            failures = {}
+            undetermined = []
             self.sequences = {}
-            while ccas_done != n_cca: # cca done par lecture des messages / cca dones car rien a faire (detection a l'envoi)
-                ccas_done += self.lectureAsynchrone(constellation,freeCPUs,mailbox,echecs,indetermines,sequences_cca)
-                ccas_done += self.envoiAsynchrone(ccas,mapping_obs,sequences_cca,freeCPUs,mailbox,job_slaves)
-            self.job_slaves = job_slaves
-            self.genererExplications(constellation,echecs)
-            self.indetermines = indetermines
+            while ccas_done != nCCAs: # cca done par lecture des messages / cca dones car rien a faire (detection a l'envoi)
+                ccas_done += self.asynchronousReading(constellation,freeCPUs,mailbox,failures,undetermined,ccaSequences)
+                ccas_done += self.asynchronousSend(ccas,mappingObs,ccaSequences,freeCPUs,mailbox,jobSlaves)
+            self.jobSlaves = jobSlaves
+            self.generateExplainations(constellation,failures)
+            self.undetermined = undetermined
         
-        def envoyerTacheAsynchrone(self,constellation,freeCPUs,mailbox,failed):
-            mapping_obs,sequences_cca = self.mappingCCAObservationsCourantes(constellation,failed) # cca -> (r,m) -> liste obs sur la cca
+        def sendAsynchronousTask(self,constellation,freeCPUs,mailbox,failed):
+            mappingObs,ccaSequences = self.mappingCCACurrentObservations(constellation,failed) # cca -> (r,m) -> liste obs sur la cca
             if comm.Get_size()==1:
                 freeCPUs.remove(0)
-                job_slaves,sequences_slaves = self.repartirTravailSlaves(mapping_obs,sequences_cca)
-                data = {"time":time(),"taches":job_slaves[0],"sequences":sequences_slaves[0]}
-                self.localSlave.insererActivites(constellation,data)
+                jobSlaves,sequencesSlave = self.dispatchWorkToSlaves(mappingObs,ccaSequences)
+                data = {"time":time(),"taches":jobSlaves[0],"sequences":sequencesSlave[0]}
+                self.localSlave.insertActivities(constellation,data)
             else:
-                self.lectureEnvoiSimultanes(constellation,mapping_obs,sequences_cca,mailbox,freeCPUs)
-        def envoyerTache(self,constellation,freeCPUs,mailbox,failed):
-            mapping_obs,sequences_cca = self.mappingCCAObservationsCourantes(constellation,failed) # cca -> (r,m) -> liste obs sur la cca
+                self.simultaneousSendAndRead(constellation,mappingObs,ccaSequences,mailbox,freeCPUs)
+            
+        def sendTask(self,constellation,freeCPUs,mailbox,failed):
+            mappingObs,ccaSequences = self.mappingCCACurrentObservations(constellation,failed) # cca -> (r,m) -> liste obs sur la cca
                 # ajouter potentiellement un remapping pour repartir la charge de travail
-            job_slaves,sequences_slaves = self.repartirTravailSlaves(mapping_obs,sequences_cca)
-            #printColor(job_slaves,c='y')
+            jobSlaves,sequencesSlave = self.dispatchWorkToSlaves(mappingObs,ccaSequences)
+            #printColor(jobSlaves,c='y')
             comm = MPI.COMM_WORLD
-            #die()
             if comm.Get_size()==1:
                 freeCPUs.remove(0)
-                data = {"time":time(),"taches":job_slaves[0],"sequences":sequences_slaves[0]}
-                self.localSlave.insererActivites(constellation,data)
+                data = {"time":time(),"taches":jobSlaves[0],"sequences":sequencesSlave[0]}
+                self.localSlave.insertActivities(constellation,data)
             else:
-                for cpu in job_slaves:
+                for cpu in jobSlaves:
                     freeCPUs.remove(cpu)
-                    data = {"taches":job_slaves[cpu],"sequences":sequences_slaves[cpu]}
-                    mailbox.demanderTache(data,cpu)
-                    self.solution.historique.enregistrerEnvoi(cpu)
+                    data = {"taches":jobSlaves[cpu],"sequences":sequencesSlave[cpu]}
+                    mailbox.askForTask(data,cpu)
+                    self.solution.history.registerMessageSending(cpu)
     
     class Processus:
         def __init__(self,role):
             self.role = role
         
-        def resoudre(self,constellation):
+        def resolve(self,constellation):
             pass
         
     class Master(Processus):
@@ -566,18 +555,18 @@ else:
             self.start = start
             self.tlim = tlim
             
-        def resoudre(self,constellation,mailbox,CCAs,solution,modeleDeTransition,dt_construction_transition):
+        def resolve(self,constellation,mailbox,CCAs,solution,transitionModel,dt_construction_transition):
             # iterer insertion-réparation
-            self.initSolution(constellation,CCAs,solution,modeleDeTransition,dt_construction_transition)
-            self.solution.resoudre(constellation,mailbox)
-            self.solution.construirePlan(constellation)
+            self.initSolution(constellation,CCAs,solution,transitionModel,dt_construction_transition)
+            self.solution.resolve(constellation,mailbox)
+            self.solution.buildPlan(constellation)
     
-        def meilleureSolution(self):
-            return self.solution.meilleureSolution()
+        def bestSolution(self):
+            return self.solution.bestSolution()
         
-        def releverObjectif(self):
+        def registerObjective(self):
             rel = config.glob.releves
-            sol = self.meilleureSolution()
+            sol = self.bestSolution()
             points = []
             i_rel = 0
             for i,(t,obj,modes) in enumerate(sol):
@@ -588,45 +577,45 @@ else:
                     i_rel += 1
             return points               
         
-        def tracerActivite(self,constellation,annoter=False):
-            return self.solution.tracerActivite(constellation,annoter)
+        def plotActivity(self,constellation,annotate=False):
+            return self.solution.plotActivity(constellation,annotate)
             
-        def tracerHistorique(self,init=True):
-            return self.solution.tracerHistorique(init)
+        def plotHistory(self,init=True):
+            return self.solution.plotHistory(init)
         
         def saveSample(self,constellation):
             self.solution.saveSample(constellation)
             
-        def initSolution(self,constellation,CCAs,solution,modeleDeTransition,dt_construction_transition):
-            self.solution = BatchParallelCCASearch(constellation,self.start,modeleDeTransition,dt_construction_transition,tlim=self.tlim,CCAs=CCAs,solution=solution)
+        def initSolution(self,constellation,CCAs,solution,transitionModel,dt_construction_transition):
+            self.solution = BatchParallelCCASearch(constellation,self.start,transitionModel,dt_construction_transition,tlim=self.tlim,CCAs=CCAs,solution=solution)
             
         def getSolution(self):
             return self.solution.getSolution()
 
-        def verifierSolution(self,modeleDeTransition):
-            self.solution.verifierSolution(modeleDeTransition)
+        def verifySolution(self,transitionModel):
+            self.solution.verifySolution(transitionModel)
             
         def getModesSolution(self):
             return self.solution.getModes()
     
     class Slave(Processus):
         # classe pour planifier les sequences des cca sur les slaves
-        class PlanificateurCCA:
-            def __init__(self,sol_cca,modeleDeTransition):
+        class CCAPlanner:
+            def __init__(self,sol_cca,transitionModel):
                 self.solution = sol_cca
-                self.modeleDeTransition = modeleDeTransition
+                self.transitionModel = transitionModel
     
             def __str__(self):
                 return self.solution.__str__()
             
             def setSequence(self,constellation,sequence):
-                self.solution.setSequence(constellation,sequence,self.modeleDeTransition)
+                self.solution.setSequence(constellation,sequence,self.transitionModel)
                 
             def getSatellite(self):
                 return self.solution.getSatellite()
     
-            def getIdentifiant(self):
-                return self.solution.getIdentifiant()
+            def getIdentifier(self):
+                return self.solution.getIdentifier()
         
             def getSolution(self):
                 return self.solution
@@ -634,137 +623,128 @@ else:
             def getSequence(self):
                 return self.solution.getSequence()
             
-            def solverUsed(self):
-                return self.solver_use
+            def wasSolverUsed(self):
+                return self.solverUsed
             
             # VERSION LKH
-            def planifierMode(self,constellation,activites):
-                seq_avant = self.solution.sequence.copy()
-                derniereSolution = deepcopy(self.solution)
-                self.solution.ajouterActivites(constellation,activites,self.modeleDeTransition,cheap=False)
-                seq_inter = self.solution.sequence.copy()
+            def planMode(self,constellation,activites):
+                sequenceBefore = self.solution.sequence.copy()
+                previousSolution = deepcopy(self.solution)
+                self.solution.insertActivities(constellation,activites,self.transitionModel,cheap=False)
+                seqInter = self.solution.sequence.copy()
                 #printColor(MPI.COMM_WORLD.Get_rank(),"insertion",activites,len(self.solution.sequence),c='g')
-                succes = self.solution.calculerSequence(constellation,self.modeleDeTransition,'LKH')
-                self.solver_use = self.solution.solverUsed()
-                if not(not succes or len(seq_avant)+len(activites)==len(self.solution.sequence)):
-                    print(MPI.COMM_WORLD.Get_rank(),succes,seq_avant,activites,self.solution.sequence)
+                success = self.solution.computeNewSequence(constellation,self.transitionModel,'LKH')
+                self.solverUsed = self.solution.wasSolverUsed()
+                if not(not success or len(sequenceBefore)+len(activites)==len(self.solution.sequence)):
+                    print(MPI.COMM_WORLD.Get_rank(),success,sequenceBefore,activites,self.solution.sequence)
                     assert(False)
-                if not succes:
-                    sequence = derniereSolution.getSequence().copy()
-                    self.solution = derniereSolution
-                return succes
+                if not success:
+                    sequence = previousSolution.getSequence().copy()
+                    self.solution = previousSolution
+                return success
             
             # VERSION OPTW
             # (r,m) => liste d'activites
-            def planifierListModes(self,constellation,modes_tries):
+            def planListOfModes(self,constellation,modes_tries):
                 shiftRightDisplay(4)
-                seq_avant = self.solution.sequence.copy()
-                derniereSolution = deepcopy(self.solution)
-                self.solution.ajouterListeModes(constellation,modes_tries,self.modeleDeTransition)
-                seq_inter = self.solution.sequence.copy()
+                sequenceBefore = self.solution.sequence.copy()
+                previousSolution = deepcopy(self.solution)
+                self.solution.insertListOfModes(constellation,modes_tries,self.transitionModel)
+                seqInter = self.solution.sequence.copy()
                 groups = {}
-                groups[0] = copy(seq_avant)
+                groups[0] = copy(sequenceBefore)
                 for i,mode in enumerate(modes_tries):
                     groups[i+1] = modes_tries[mode]
                     assert(modes_tries[mode]!=[])
                 #printColor(MPI.COMM_WORLD.Get_rank(),"insertion",activites,len(self.solution.sequence),c='g')
-                res = self.solution.calculerSequence(constellation,self.modeleDeTransition,solver=config.getOptValue("solver_PCCAS"),groups=groups)
-                succes,requetes_satisfaites = res
-                self.solver_use = self.solution.solverUsed()
-                assert(succes)
-                """
-                if not(not succes or len(seq_avant)+sum([len(modes_tries[m]) for m in modes_tries])==len(self.solution.sequence)):
-                    print(MPI.COMM_WORLD.Get_rank(),succes,seq_avant,activites,self.solution.sequence)
-                    assert(False)
-                if not succes:
-                    sequence = derniereSolution.getSequence().copy()
-                    self.solution = derniereSolution
-                """
+                res = self.solution.computeNewSequence(constellation,self.transitionModel,solver=config.getOptValue("solver_PCCAS"),groups=groups)
+                success,fulfilledRequests = res
+                self.solverUsed = self.solution.wasSolverUsed()
+                assert(success)
                 shiftLeftDisplay(4)
-                return requetes_satisfaites
+                return fulfilledRequests
                     
             def sequenceFaisable(self,constellation):
-                return self.solution.sequenceFaisable(constellation,self.modeleDeTransition)
+                return self.solution.sequenceFaisable(constellation,self.transitionModel)
             
-        def __init__(self,constellation,start,modeleDeTransition,CCAs=None):
+        def __init__(self,constellation,start,transitionModel,CCAs=None):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             super().__init__("slave "+str(rank))
-            activites = constellation.extraireActivitesRequetes()
+            activites = constellation.extractActivitiesFromRequests()
             if CCAs is not None:
-                self.grapheDependances = CCAs
+                self.dependenciesGraph = CCAs
             else:
-                self.grapheDependances = GroupeComposantesActivitesStatiques(constellation,activites,modeleDeTransition)
-            self.planificateurCCA = {}
+                self.dependenciesGraph = StaticCCAsGroup(constellation,activites,transitionModel)
+            self.planners = {}
             self.start = start
             
             for s in constellation.getSatellites():
-                for cca in self.grapheDependances.getCCASatellite(s):
-                    self.planificateurCCA[(s,cca)] = self.PlanificateurCCA(SolCCA(cca,s),modeleDeTransition)
+                for cca in self.dependenciesGraph.getCCASatellite(s):
+                    self.planners[(s,cca)] = self.CCAPlanner(SolCCA(cca,s),transitionModel)
         
-        def estMessageFin(self,data):
+        def isEndMessage(self,data):
             return 'fin' in data
         
-        def etendreDureesCalcul(self):
+        def extendComputationTime(self):
             durees = []
-            for i,date in enumerate(self.dates_cca):
-                if i<len(self.dates_cca)-1:
-                    durees.append((date,self.dates_cca[i+1]-date))
+            for i,date in enumerate(self.ccaDates):
+                if i<len(self.ccaDates)-1:
+                    durees.append((date,self.ccaDates[i+1]-date))
             return durees
         
         def packSolution(self):
-            return {'indetermines':self.etat_inconnus,'sequences':self.sequences,'explications':self.explications,'cpu_time':self.etendreDureesCalcul(),'reception':time(),'envoi':(self.date_envoi,self.duree_envoi),'source':rank,'solver time':self.solver_time}
+            return {'undetermined':self.undeterminedStates,'sequences':self.sequences,'explainations':self.explainations,'cpu_time':self.extendComputationTime(),'reception':time(),'envoi':(self.sendingDate,self.sendingDuration),'source':rank,'solver time':self.solverTime}
         
         
-        def insererActivitesOPTW(self,constellation,data):
-            self.duree_envoi = time() - data['time']
-            self.start_calcul = time()
-            self.date_envoi = data['time']
+        def insertActivitiesOPTW(self,constellation,data):
+            self.sendingDuration = time() - data['time']
+            self.startComputation = time()
+            self.sendingDate = data['time']
             del data['time']
             start = time()
-            for id_cca in self.planificateurCCA: 
-                self.planificateurCCA[id_cca].setSequence(constellation,data['sequences'].get(id_cca,[]))
+            for idCCA in self.planners: 
+                self.planners[idCCA].setSequence(constellation,data['sequences'].get(idCCA,[]))
             self.sequences = {}
-            self.explications = {}
-            self.etat_inconnus = []
-            self.dates_cca = [time()]
-            self.solver_time = 0
-            for id_cca in data['taches']:
-                modes = sorted(data['taches'][id_cca],key=lambda x : (x[0]==-1,x[2][0],-x[0]),reverse=True)
-                activites_modes_tries = {(x[0],x[1]) : data['taches'][id_cca][x] for x in modes}
-                start_solver = time()
-                requetes_satisfaites = self.planificateurCCA[id_cca].planifierListModes(constellation,activites_modes_tries)
-                if self.planificateurCCA[id_cca].solverUsed():
-                        self.solver_time += time()-start_solver
-                for (r,m,score) in data['taches'][id_cca]:
-                    if r not in requetes_satisfaites:
-                        activites = data['taches'][id_cca][(r,m,score)]
-                        if (r,m) not in self.explications:
-                            self.explications[(r,m)] = []
-                        self.explications[(r,m)] += activites
+            self.explainations = {}
+            self.undeterminedStates = []
+            self.ccaDates = [time()]
+            self.solverTime = 0
+            for idCCA in data['taches']:
+                modes = sorted(data['taches'][idCCA],key=lambda x : (x[0]==-1,x[2][0],-x[0]),reverse=True)
+                activites_modes_tries = {(x[0],x[1]) : data['taches'][idCCA][x] for x in modes}
+                startSolver = time()
+                fulfilledRequests = self.planners[idCCA].planListOfModes(constellation,activites_modes_tries)
+                if self.planners[idCCA].wasSolverUsed():
+                        self.solverTime += time()-startSolver
+                for (r,m,score) in data['taches'][idCCA]:
+                    if r not in fulfilledRequests:
+                        activites = data['taches'][idCCA][(r,m,score)]
+                        if (r,m) not in self.explainations:
+                            self.explainations[(r,m)] = []
+                        self.explainations[(r,m)] += activites
                 
-                self.sequences[id_cca] = self.planificateurCCA[id_cca].solution.getSequence()
-                self.dates_cca.append(time())
+                self.sequences[idCCA] = self.planners[idCCA].solution.getSequence()
+                self.ccaDates.append(time())
                 # trier les modes et inserer leurs activites
-                
-            self.resultat = self.packSolution()        
+            self.results = self.packSolution()        
             
-        def insererActivites(self,constellation,data):
-            self.duree_envoi = time() - data['time']
-            self.start_calcul = time()
-            self.date_envoi = data['time']
+        def insertActivities(self,constellation,data):
+            self.sendingDuration = time() - data['time']
+            self.startComputation = time()
+            self.sendingDate = data['time']
             del data['time']
             start = time()
-            for cca in self.planificateurCCA: # le bug est surement ici : pb de cle
-                self.planificateurCCA[cca].setSequence(constellation,data['sequences'].get(cca,[]))
+            for cca in self.planners:
+                self.planners[cca].setSequence(constellation,data['sequences'].get(cca,[]))
             nActivites = 0
             nModes = 0
             nCCA = 0
             self.sequences = {}
-            self.explications = {}
-            self.etat_inconnus = []
-            self.dates_cca = [time()]
-            self.solver_time = 0
+            self.explainations = {}
+            self.undeterminedStates = []
+            self.ccaDates = [time()]
+            self.solverTime = 0
             for cca in data['taches']:
                 fails = 0
                 n_calls = 0
@@ -777,96 +757,90 @@ else:
                         nActivites += len(activites)
                         nModes += 1
                         #printColor(MPI.COMM_WORLD.Get_rank(),cca,(r,m),activites,c='b')
-                        start_solver = time()
-                        succes = self.planificateurCCA[cca].planifierMode(constellation,activites)
-                        if self.planificateurCCA[cca].solverUsed():
-                            self.solver_time += time()-start_solver
-                        if not succes:
+                        startSolver = time()
+                        success = self.planners[cca].planMode(constellation,activites)
+                        if self.planners[cca].wasSolverUsed():
+                            self.solverTime += time()-startSolver
+                        if not success:
                             fails += 1
                             n_calls += 1
                             #printColor("CPU ",MPI.COMM_WORLD.Get_rank(),"echec insertion",(r,m),activites,"dans la cca",cca,c='r')
-                            if (r,m) not in self.explications:
-                                self.explications[(r,m)] = []
-                            self.explications[(r,m)] += activites
+                            if (r,m) not in self.explainations:
+                                self.explainations[(r,m)] = []
+                            self.explainations[(r,m)] += activites
                             if fails >= config.getOptValue("fails") or n_calls >= config.getOptValue("scalls"):
                                 stop = True
                         else:
                             fails = 0
                     else:
-                        self.etat_inconnus.append((r,m))
-                self.sequences[cca] = self.planificateurCCA[cca].solution.getSequence()
-                #print("CCA",cca,self.planificateurCCA[cca].solution.planEarliest(constellation,self.sequences[cca]))
-                
-                self.dates_cca.append(time())
+                        self.undeterminedStates.append((r,m))
+                self.sequences[cca] = self.planners[cca].solution.getSequence()                
+                self.ccaDates.append(time())
                 # trier les modes et inserer leurs activites
-            self.resultat = self.packSolution()
+            self.results = self.packSolution()
             #printColor("Processus",MPI.COMM_WORLD.Get_rank(),"terminé (",nActivites,"activités",nModes,"modes",nCCA,"CCAs )",c='b')
         
-        def resoudre(self,constellation,mailbox):
+        def resolve(self,constellation,mailbox):
             comm = MPI.COMM_WORLD
             while True:
                 data = comm.recv()
-                if self.estMessageFin(data):
+                if self.isEndMessage(data):
                     comm.Barrier()
-                    #MPI.COMM_WORLD.send({cca : self.planificateurCCA[cca].getSequence() for cca in self.planificateurCCA},dest=0)
                     break
                 else:
                     if config.getOptValue("solver_PCCAS") == 'LKH':
-                        self.insererActivites(constellation,data)
+                        self.insertActivities(constellation,data)
                     else:
-                        self.insererActivitesOPTW(constellation,data)
-                    mailbox.posterMessage(self.resultat)
+                        self.insertActivitiesOPTW(constellation,data)
+                    mailbox.postMessage(self.results)
         
-        def getResultat(self):
+        def getResults(self):
             if MPI.COMM_WORLD.Get_size()==1:
-                self.resultat['reception'] = (self.resultat['reception'],time() - self.resultat['reception'])
-            return self.resultat
-        
-        
-        
+                self.results['reception'] = (self.results['reception'],time() - self.results['reception'])
+            return self.results
+                
     path = '../data'
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     
     
-    class Messagerie:
+    class Communication:
         def __init__(self):
             # eviter d'envoyer les informations qu'on va recuperer à l'identique ensuite
-            self.local_data = {}
+            self.localData = {}
         
-        def envoyerMessage(self,data,cpu):
+        def sendMessage(self,data,cpu):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             assert(rank==0)
             data['time']=time()
-            #self.extraireDonneesRedondantes(data,cpu)
             comm.send(data, dest=cpu, tag=rank)
         
         def extraireDonneesRedondantes(self,data,cpu):
             # {'mode':mode,'cca':cca,'source':rank,'activites':activites,'time':time()}
-            id_cca = data['cca'].getIdentifiant()
-            self.local_data[cpu] = {}
-            self.local_data[cpu]['sequence'] = data['cca'].getSequence().copy()
-            self.local_data[cpu]["mode"] = data['mode']
-            self.local_data[cpu]['activites'] = data['activites']
-            self.local_data[cpu]['cca'] = id_cca
+            idCCA = data['cca'].getIdentifier()
+            self.localData[cpu] = {}
+            self.localData[cpu]['sequence'] = data['cca'].getSequence().copy()
+            self.localData[cpu]["mode"] = data['mode']
+            self.localData[cpu]['activites'] = data['activites']
+            self.localData[cpu]['cca'] = idCCA
             del data['mode']
-            data['cca'] = id_cca
+            data['cca'] = idCCA
             
-        def reformerDonnees(self,data):
+        def reformatData(self,data):
             source = data['source']
-            data['cca'] = self.local_data[source]['cca']
-            data['mode'] = self.local_data[source]['mode']
-            data['sequence'] = self.local_data[source]['sequence']
-            data['explication'] = self.local_data[source]['activites']
+            data['cca'] = self.localData[source]['cca']
+            data['mode'] = self.localData[source]['mode']
+            data['sequence'] = self.localData[source]['sequence']
+            data['explication'] = self.localData[source]['activites']
             if data['faisable']:
                 data['sequence'] += data['explication']
                 
-    class MessagerieMessageUnique(Messagerie):
+    class UniqueMessageCommunication(Communication):
         def __init__(self):
             pass
         
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             MPI.COMM_WORLD.send(data,dest=0)
             
@@ -876,14 +850,14 @@ else:
             data['reception'] = (data['reception'],time()-data['reception'])
             return [data]
         
-        def demanderTache(self,data,cpu):
+        def askForTask(self,data,cpu):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            envoyerMessage(data,cpu)
+            sendMessage(data,cpu)
             
         def __str__(self):
-            return "Messagerie à message unique"
+            return "Unique message communication"
         
-    class MessagerieSynchronisee(Messagerie):
+    class SynchronizedCommunication(Communication):
         def __init__(self):
             comm = MPI.COMM_WORLD 
             self.size = comm.Get_size()-1 
@@ -899,13 +873,13 @@ else:
                 self.cpu_mapped[i] = 0
         
         # appelé par le master
-        def demanderTache(self,data,cpu):
+        def askForTask(self,data,cpu):
             assert(MPI.COMM_WORLD.Get_rank()==0)
             self.cpu_mapped[cpu-1] = 1
-            self.envoyerMessage(data,cpu)
+            self.sendMessage(data,cpu)
             
         # appelé par les slaves
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             MPI.COMM_WORLD.send(data,dest=0)
             rank = MPI.COMM_WORLD.Get_rank()
@@ -926,9 +900,9 @@ else:
             return res
         
         def __str__(self):
-            return "Messagerie synchronisée"
+            return "MSynchronized communication"
             
-    class MessageriePartagee(Messagerie):
+    class SharedCommunication(Communication):
         def __init__(self):
             super().__init__()
             comm = MPI.COMM_WORLD 
@@ -940,56 +914,54 @@ else:
                 nbytes = 0
             self.win = MPI.Win.Allocate_shared(nbytes, itemsize, comm=comm) 
             # create a numpy array whose data points to the shared mem
-            self.flag_messages, itemsize = self.win.Shared_query(0)
+            self.flagMessages, itemsize = self.win.Shared_query(0)
             for i in range(self.size):
-                self.flag_messages[i] = False
-            #self.flag_messages = np.ndarray(buffer=self.buf, dtype=bool, shape=(size,))
+                self.flagMessages[i] = False
+            #self.flagMessages = np.ndarray(buffer=self.buf, dtype=bool, shape=(size,))
         
-        def demanderTache(self,data,cpu):
+        def askForTask(self,data,cpu):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            self.envoyerMessage(data,cpu)
+            self.sendMessage(data,cpu)
     
                 
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             slot = MPI.COMM_WORLD.Get_rank()-1
-            self.flag_messages[slot] = True
+            self.flagMessages[slot] = True
             MPI.COMM_WORLD.send(data,dest=0)
         
         def readMessages(self):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            for i,x in enumerate(self.flag_messages):
+            for i,x in enumerate(self.flagMessages):
                 if x:
                     process = i+1
                     data = MPI.COMM_WORLD.recv(source=process)
                     data['reception'] = (data['reception'],time()-data['reception'])
-                    #self.reformerDonnees(data)
                     assert(process==data['source'])
-                    self.flag_messages[i] = False
+                    self.flagMessages[i] = False
                     yield data
                 else:
                     yield None
         
         def __str__(self):
-            return "Messagerie partagée : "+ str([self.flag_messages[i] for i in range(self.size)])
+            return "Shared communication: "+ str([self.flagMessages[i] for i in range(self.size)])
     
     class runnableBPCCAS:
-        def execute(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
-            mailbox = MessageriePartagee()
+        def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+            mailbox = SharedCommunication()
             id_mpi = MPI.COMM_WORLD.Get_rank()
             seed_option = config.getOptValue("seed")
             rd.seed(id_mpi+seed_option)
             if MPI.COMM_WORLD.Get_rank()==0:
-                self.process = Master(start_date,tlim)
-                self.process.resoudre(constellation,mailbox,CCAs,solution,modeleDeTransition,dt_construction_transition)
+                self.process = Master(startDate,tlim)
+                self.process.resolve(constellation,mailbox,CCAs,solution,transitionModel,dt_construction_transition)
                 
                 for i in range(1,MPI.COMM_WORLD.Get_size()):
                     MPI.COMM_WORLD.send({"sol":self.process.solution.getSolutionContainer()},dest=i)
-                
                 return self.process.solution.getSolutionContainer()
             else:
-                process = Slave(constellation,start_date,modeleDeTransition,CCAs=CCAs)
-                process.resoudre(constellation,mailbox)
+                process = Slave(constellation,startDate,transitionModel,CCAs=CCAs)
+                process.resolve(constellation,mailbox)
                 data = None
                 data = MPI.COMM_WORLD.recv(data)
                 

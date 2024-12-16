@@ -20,83 +20,82 @@ from ..Utils.Utils import printMaster,printColor,printOpen,printClose,printNoSpa
 
 class RequestDealer:
     class BatchRequest:
-        def __init__(self,date_arrivee,liste_requetes):
-            self.date_arrivee = date_arrivee
-            self.liste_requetes = liste_requetes
+        def __init__(self,arrivingDate,requestsList):
+            self.arrivingDate = arrivingDate
+            self.requestsList = requestsList
             
         def __str__(self):
-            return "Batch("+str(self.liste_requetes)+", arrivée : "+ str(self.date_arrivee) + ")"
+            return "Batch("+str(self.requestsList)+", arriving : "+ str(self.arrivingDate) + ")"
         
-        def getDateArrivee(self):
-            return self.date_arrivee
+        def getArrivingDate(self):
+            return self.arrivingDate
         
-        def getRequetes(self):
-            return self.liste_requetes
-    # proportion_depart : proportion de requêtes considérée à l'instant 0 du run
-    # discretisation : temps entre deux arrivée de batch de requêtes
-    # date_derniere_requete : durée écoulée avant l'arrivée de la dernière requête
-    def __init__(self,constellation,start_date,proportion_depart,discretisation,date_derniere_requete):
-        self.melange_ordre_requetes = rd.Random(config.getOptValue("seed"))
-        self.proportion_depart = proportion_depart
-        self.discretisation = discretisation
-        self.date_derniere_requete = date_derniere_requete
+        def getRequests(self):
+            return self.requestsList
+    # startingProportion : proportion de requêtes considérée à l'instant 0 du run
+    # discretization : temps entre deux arrivée de batch de requêtes
+    # lastRequestDate : durée écoulée avant l'arrivée de la dernière requête
+    def __init__(self,constellation,startDate,startingProportion,discretization,lastRequestDate):
+        self.shuffledRequests = rd.Random(config.getOptValue("seed"))
+        self.startingProportion = startingProportion
+        self.discretization = discretization
+        self.lastRequestDate = lastRequestDate
         self.batchs = []
-        self.start_date = start_date
+        self.startDate = startDate
         
-        if not self.date_derniere_requete%self.discretisation==0:
-            raise ValueError("Date d'arrivée de la derniere requête incompatible avec la discrétisation. Indiquez un multiple du pas de temps.")
+        if not self.lastRequestDate%self.discretization==0:
+            raise ValueError("Arriving date incompatible with discretization. Indicate another discretization step.")
         
-        
-        pool_requetes = constellation.getToutesRequetes()
-        N_requetes_initial = len(pool_requetes)
-        self.melange_ordre_requetes.shuffle(pool_requetes)
-        nombre_depart = int(self.proportion_depart*len(pool_requetes))
-        pool_requetes.remove(-1)
-        pool_requetes.append(-1) # mise a la fin du vidage => fera parti du batch 0
+        requestPool = constellation.getAllRequests()
+        nInitialRequests = len(requestPool)
+        self.shuffledRequests.shuffle(requestPool)
+        initialNumber = int(self.startingProportion*len(requestPool))
+        requestPool.remove(-1)
+        requestPool.append(-1) # mise a la fin du vidage => fera parti du batch 0
         # creation du batch initial
-        t_courant = 0
-        batch_initial = self.creerBatchNouvellesRequetes(t_courant,pool_requetes,nombre_depart)
+        currentDate = 0
+        batch_initial = self.createNewRequestBatch(currentDate,requestPool,initialNumber)
         self.batchs.append(batch_initial)
         # information sur les batchs
-        requetes_restantes = len(pool_requetes)
-        n_batchs = int(self.date_derniere_requete/self.discretisation)
-        taille_batch = floor((N_requetes_initial-nombre_depart)/n_batchs)
+        remainingRequests = len(requestPool)
+        n_batchs = int(self.lastRequestDate/self.discretization)
+        batchSize = floor((nInitialRequests-initialNumber)/n_batchs)
         # creation des batchs
-        contenu_batchs = [[] for i in range(n_batchs)]
+        batchContents = [[] for i in range(n_batchs)]
         j = 0
-        while len(pool_requetes)>0:
-            contenu_batchs[j%n_batchs].append(pool_requetes.pop())
+        while len(requestPool)>0:
+            batchContents[j%n_batchs].append(requestPool.pop())
             j += 1
         for i in range(n_batchs):
-            t_courant = (i+1)*self.discretisation
-            batch_courant = self.BatchRequest(t_courant,contenu_batchs[i])
-            self.batchs.append(batch_courant)
+            currentDate = (i+1)*self.discretization
+            currentBatch = self.BatchRequest(currentDate,batchContents[i])
+            self.batchs.append(currentBatch)
             
-        self.batchs_restants = deepcopy(self.batchs)
-        change,liste_requetes = self.scruterArriveeNouvellesRequetes(constellation)
-        self.premiere_requetes = liste_requetes
+        self.remainingBatchs = deepcopy(self.batchs)
+        change,requestsList = self.watchRequestArrival(constellation)
+        self.firstRequests = requestsList
         
-    def getRequetesDepart(self):
-        return self.premiere_requetes
+    def getInitialRequests(self):
+        return self.firstRequests
     
-    def creerBatchNouvellesRequetes(self,date,pool_requetes,taille_batch):
+    def createNewRequestBatch(self,date,requestPool,batchSize):
         liste_batch = []
-        assert(taille_batch<=len(pool_requetes))
-        for i in range(taille_batch):
-            liste_batch.append(pool_requetes.pop())
+        assert(batchSize<=len(requestPool))
+        for i in range(batchSize):
+            liste_batch.append(requestPool.pop())
         return self.BatchRequest(date,liste_batch)
     
-    def scruterArriveeNouvellesRequetes(self,constellation,grapheDependances=None):
-        temps_ecoule = time()-self.start_date
+    def watchRequestArrival(self,constellation,grapheDependances=None):
+        timeElapsed = time()-self.startDate
         change = False
-        liste_requetes = []
-        while len(self.batchs_restants)>0 and temps_ecoule>=self.batchs_restants[0].getDateArrivee():
+        requestsList = []
+        while len(self.remainingBatchs)>0 and timeElapsed>=self.remainingBatchs[0].getArrivingDate():
             change = True
-            batch = self.batchs_restants.pop(0)
-            printColor("Activation des requêtes ",batch.getRequetes(),depth=2,c='y')
-            for r in batch.getRequetes():
+            batch = self.remainingBatchs.pop(0)
+            printColor("Activating requests ",batch.getRequests(),depth=2,c='y')
+            for r in batch.getRequests():
                 constellation.getRequete(r).activer()
                 if grapheDependances is not None:
                     grapheDependances.ajouterRequete(constellation,r)
-            liste_requetes += batch.getRequetes()
-        return change,liste_requetes
+            requestsList += batch.getRequests()
+        return change,requestsList

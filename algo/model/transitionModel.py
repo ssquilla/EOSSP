@@ -45,7 +45,7 @@ class TimeIndependentTransitionModel:
         return self.tau_max
     
     def __str__(self):
-        msg = "Modèle de transition \"" + self.nom +"\" (vlat="+str(self.vlat)
+        msg = "Transition model \"" + self.nom +"\" (vlat="+str(self.vlat)
         msg += " ; vlong="+str(self.vlong)
         msg += " ; tau_max="+str(self.tau_max)+")"
         return msg
@@ -59,14 +59,14 @@ class TimeIndependentTransitionModel:
     def computeTransition(self,satellite,p1,p2,digits):
         if(p1==p2):
             return 0
-        if(satellite.estVidage(p1)):
-            coord1 = satellite.getVidages()[p1].getCoordonnees()
+        if(satellite.isDownload(p1)):
+            coord1 = satellite.getDownloads()[p1].getCoordinates()
         else:
-            coord1 = satellite.getObservations()[p1].getCoordonnees()
-        if(satellite.estVidage(p2)):
-            coord2 = satellite.getVidages()[p2].getCoordonnees()
+            coord1 = satellite.getObservations()[p1].getCoordinates()
+        if(satellite.isDownload(p2)):
+            coord2 = satellite.getDownloads()[p2].getCoordinates()
         else:
-            coord2 = satellite.getObservations()[p2].getCoordonnees()
+            coord2 = satellite.getObservations()[p2].getCoordinates()
         vlat = self.getVitesseLatitude()
         vlong = self.getVitesseLongitude()
         tau_max = self.getTransititionDurationUpperBound()
