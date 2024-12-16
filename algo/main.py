@@ -2,7 +2,7 @@ import sys, importlib
 from pathlib import Path
 from resource import *
 
-def import_parents(level=1):
+def importParents(level=1):
     global __package__
     file = Path(__file__).resolve()
     parent, top = file.parent, file.parents[level]
@@ -17,9 +17,8 @@ def import_parents(level=1):
     importlib.import_module(__package__) # won't be needed after that
         
 
-
 if __name__ == '__main__' and __package__ is None:
-    import_parents(level=1)
+    importParents(level=1)
 
 """
 Created on Tue Jan 10 16:29:22 2023
@@ -33,7 +32,7 @@ config = Config()
 instance = config.instance
 if config.getOptValue("help"):
     if MPI.COMM_WORLD.Get_rank()==0:
-        config.afficherAide()
+        config.displayHelp()
 else:  
     from .LNS.LNSSolver import runnableLNS
     from .CPModel.CPSolver import runnableCPSolver
@@ -41,36 +40,34 @@ else:
     from .BPCCAS.BPCCAS import runnableBPCCAS
     from .UPCCAS.UPCCAS import runnableUPCCAS
     
-    from .model.modelTransition import *
-    from .model.composantes import *
-    from .model.solution_composantes import *
-    
-    
-    
+    from .model.transitionModel import *
+    from .model.components import *
+    from .model.componentPlan import *
+        
     from .model.constellation import Constellation
     
     from mpi4py import MPI
     
     if config.getOptValue("help"):
         if MPI.COMM_WORLD.Get_rank()==0:
-            config.afficherAide()
+            config.displayHelp()
     else:
      
-        def listerPossibilites():
-            possibilites = []
-            possibilites.append(("LNS",runnableLNS))
-            possibilites.append(("timeDependentSolver",runnableTimeDependentSolver))
-            possibilites.append(("CPSolver",runnableCPSolver))
-            possibilites.append(("BPCCAS",runnableBPCCAS))
-            possibilites.append(("UPCCAS",runnableUPCCAS))
-            return possibilites
+        def enumerateAlgorithms():
+            algorithms = []
+            algorithms.append(("LNS",runnableLNS))
+            algorithms.append(("timeDependentSolver",runnableTimeDependentSolver))
+            algorithms.append(("CPSolver",runnableCPSolver))
+            algorithms.append(("BPCCAS",runnableBPCCAS))
+            algorithms.append(("UPCCAS",runnableUPCCAS))
+            return algorithms
         
         def choseFileAndSetupProblem():
             folder = config.getOptValue("data")
             path = '../data/'+folder
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
-            composantes = None
+            components = None
             
             if rank==0:
                 printColor("\n")
@@ -80,89 +77,88 @@ else:
                 printColor("\n")
                 file = choseAndBroadcastFile(path,instance)
                 comm.Barrier()
-                start_date = time()
-                constellation = Constellation(file,start_date,True)
+                startDate = time()
+                constellation = Constellation(file,startDate,True)
             else:
                 data = None
                 data = comm.bcast(data,root=0)
                 file = data['file']
                 comm.Barrier()
-                start_date = time()
-                constellation = Constellation(file,start_date,False)
-            composantes,modeleDeTransition = chargerCCASiPrecalculees(constellation,file)
+                startDate = time()
+                constellation = Constellation(file,startDate,False)
+            components,transitionModel = loadComponentsIfPrecomputed(constellation,file)
             id_mpi = MPI.COMM_WORLD.Get_rank()
             seed_option = config.getOptValue("seed")
             rd.seed(id_mpi+seed_option)
             comm.Barrier()
-            return start_date,constellation,composantes,modeleDeTransition
+            return startDate,constellation,components,transitionModel
         
-        def chargerCCASiPrecalculees(constellation,file):
+        def loadComponentsIfPrecomputed(constellation,file):
             if "components_time_dep" in os.listdir(Path(file).parent):
                 printMaster("Lecture du modèle time-dependent ...",end ="",c='g')
                 start = time()
                 folder = Path(file).parent.__str__()+"/components_time_dep"
-                composantes = ComposantesStatiquesPrecalculees(constellation,folder)
+                components = ComposantesStatiquesPrecalculees(constellation,folder)
                 if config.isTimeDependentModeOn():
                     precompute_approx = None
                     if config.getOptValue("initTransitionModel") != "time-dep":
                         precompute_approx = config.getOptValue("initTransitionModel")
-                    modeleTimeDep = modelTransitionTimeDependent(folder,constellation,composantes,precompute_approx,profile=config.getOptValue("profile"))
+                    timeDepModel = modelTransitionTimeDependent(folder,constellation,components,precompute_approx,profile=config.getOptValue("profile"))
                 else:
-                    modeleTimeDep = None
+                    timeDepModel = None
                 end = time()
                 printMaster("OK. "+str(round(end-start))+" s.",c='g')
-                return composantes,modeleTimeDep
+                return components,timeDepModel
             else:
                 return None,None
         
         
-        
-        def choisirModeleTransition(modeleTimeDep):
+        def choseTransitionModel(timeDepModel):
             choix = config.getOptValue("initTransitionModel")
-            if modeleTimeDep is not None:
+            if timeDepModel is not None:
                 start = time()
                 printMaster("Création du modèle approché ...",end="",c='g')
                 if choix=="fast":
-                    modele = modeleOptimisteExtrait(modeleTimeDep)
+                    transitionModel = modeleOptimisteExtrait(timeDepModel)
                 elif choix=="mean":
-                    modele = modeleMoyenExtrait(modeleTimeDep)
+                    transitionModel = modeleMoyenExtrait(timeDepModel)
                 elif choix=="time-dep":
-                    modele = modeleTimeDep
+                    transitionModel = timeDepModel
                 else:
                     assert(choix=="slow")
-                    modele = modelePessimisteExtrait(modeleTimeDep)
+                    transitionModel = modelePessimisteExtrait(timeDepModel)
                 end = time()
                 printMaster("OK. "+str(round(end-start))+ " s.",c='g')
-                return modele
+                return transitionModel
             else:
-                possibilites = []
-                possibilites.append(("fast",modeleRapide))
-                possibilites.append(("slow",modeleLent))
-                possibilites.append(("mean",modeleMoyen))
-                for opt,modele in possibilites:
+                availableModels = []
+                availableModels.append(("fast",FastModel))
+                availableModels.append(("slow",SlowModel))
+                availableModels.append(("mean",MeanModel))
+                for opt,transitionModel in availableModels:
                     if opt == choix:
-                        return modele
+                        return transitionModel
             raise ValueError("Choix de modèle inconnu :",choix)
         
-        def printRandomTransition(constellation,composantes,modeleTimeDep,modeleApproche):
-            cca = rd.choice(composantes.getComposantes())
-            acts = rd.choices(composantes.getActivitesComposante(cca),k=2)
+        def printRandomTransition(constellation,components,timeDepModel,approximatedModel):
+            cca = rd.choice(components.getComposantes())
+            acts = rd.choices(components.getActivitesComposante(cca),k=2)
             for a1 in acts:
                 for a2 in acts:
                     times = np.linspace(constellation.getActivite(a1).getDebut(),constellation.getActivite(a1).getFin(),10)
-                    trans_time_dep = [modeleTimeDep.getTransition(a1,a2,t) for t in times]
-                    trans_approchee = modeleApproche.getTransition(None,a1,a2,4)
+                    timeDepTransition = [timeDepModel.getTransition(a1,a2,t) for t in times]
+                    approximatedTransition = approximatedModel.getTransition(None,a1,a2,4)
                     print("======================================")
-                    print(a1,a2,"Time-dep:",trans_time_dep,"approche",trans_approchee)
-                    print(modeleTimeDep.getPointsDeControle(a1,a2),times)
+                    print(a1,a2,"Time-dep:",timeDepTransition,"approche",approximatedTransition)
+                    print(timeDepModel.getPointsDeControle(a1,a2),times)
                     print("======================================")
             
                 
-        def lancerSolverChoisi():
-            possibilites = listerPossibilites()
+        def runChosenSolver():
+            availableAlgorithms = enumerateAlgorithms()
             solver_opt = config.getOptValue("solver")
             find = False
-            for opt,solver_runnable in possibilites:
+            for opt,solver_runnable in availableAlgorithms:
                 if solver_opt == opt:
                     solver = solver_runnable
                     find = True
@@ -171,27 +167,27 @@ else:
                 raise NameError('Solver inconnu : '+solver_opt)
             return solver()
                 
-        start_date,constellation,composantes,modeleTimeDep = choseFileAndSetupProblem()
-        dt_construction_transition = time() - start_date
+        startDate,constellation,components,timeDepModel = choseFileAndSetupProblem()
+        deltaTimeTransition = time() - startDate
         
         if not config.getOptValue("profile"):
-            start_date = time() # demarrage de la clock apres la construction du modele de transition
+            startDate = time() # demarrage de la clock apres la construction du modele de transition
             
-            modeleDeTransition = choisirModeleTransition(modeleTimeDep)
-            printMaster("Choix du modèle de transition :",modeleDeTransition)
+            transitionModel = choseTransitionModel(timeDepModel)
+            printMaster("Choix du modèle de transition :",transitionModel)
             
             if config.isTimeDependentModeOn():
-                printMaster("- taille du modèle : ",'{:,d}'.format(modeleTimeDep.taille_time_dep_vect) +" coefficients.")
-                proportionFIFO = modeleTimeDep.proportionCouplesFIFO
+                printMaster("- taille du modèle : ",'{:,d}'.format(timeDepModel.taille_time_dep_vect) +" coefficients.")
+                proportionFIFO = timeDepModel.proportionCouplesFIFO
                 if proportionFIFO != 1:
                     printMaster("Présence de couples non FIFO. Proportion de couples FIFO : ",proportionFIFO,"%",c='y')
-            runnableSolver = lancerSolverChoisi()
+            runnableSolver = runChosenSolver()
             printMaster("Solver choisi :",runnableSolver.getName())
             if runnableSolver.getName()=="Time Dependent Solver":
                 # ce solver a besoin de deux modèle de transition : approche et reel (time-dep)
-                solution_container = runnableSolver.execute(constellation,start_date,modeleDeTransition,modeleTimeDep,dt_construction_transition,CCAs=composantes)
+                solutionContainer = runnableSolver.execute(constellation,startDate,transitionModel,timeDepModel,deltaTimeTransition,CCAs=components)
             else:
-                solution_container = runnableSolver.execute(constellation,start_date,modeleDeTransition,dt_construction_transition,CCAs=composantes)
+                solutionContainer = runnableSolver.execute(constellation,startDate,transitionModel,deltaTimeTransition,CCAs=components)
             
             masterSolver = runnableSolver.getMasterSolver()
                 
