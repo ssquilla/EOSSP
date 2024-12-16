@@ -8,8 +8,8 @@ Created on Thu Oct 20 10:31:30 2022
 
 from ..model.solution import *
 from ..model.constellation import *
-from ..model.composantes import *
-from ..model.solution_composantes import *
+from ..model.components import *
+from ..model.componentPlan import *
 from ..Utils.Utils import *
 from ..Utils.Utils import printColor,printOpen,printClose,alert,warn
 from ..Utils.Utils import shiftRightDisplay,shiftLeftDisplay

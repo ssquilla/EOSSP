@@ -5,7 +5,7 @@ instance = config.instance
 from mpi4py import MPI
 if config.getOptValue("help"):
     if MPI.COMM_WORLD.Get_rank()==0:
-        config.afficherAide()
+        config.displayHelp()
 else:
     
     from . import operateursLNS as op
@@ -13,9 +13,9 @@ else:
     
     from ..model.solution import *
     from ..model.constellation import *
-    from ..model.composantes import *
-    from ..model.solution_composantes import *
-    from ..model.oracle import Oracle
+    from ..model.components import *
+    from ..model.componentPlan import *
+    #from ..model.oracle import Oracle
     
     from ..Utils.Utils import *
     from ..Utils.Utils import printColor,warn,alert,printOpen,printClose,printMaster,choseAndBroadcastFile

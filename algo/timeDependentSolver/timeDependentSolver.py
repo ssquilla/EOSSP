@@ -5,7 +5,7 @@ from mpi4py import MPI
 
 from ..model.constellation import Constellation
 from ..model.solution import Solver
-from ..model.modelTransition import *
+from ..model.transitionModel import *
 
 from ..CPModel.CPSolver import runnableCPSolver
 from ..LNS.LNSSolver import runnableLNS
@@ -22,7 +22,7 @@ from copy import copy
 
 if config.getOptValue("help"):
     if MPI.COMM_WORLD.Get_rank()==0:
-        config.afficherAide()
+        config.displayHelp()
 else:
     
     """

@@ -1,5 +1,5 @@
 """
-    Quelques fonctions standards utiles.
+    Some usefull routines.
 
 """
 from .config import *
@@ -15,7 +15,6 @@ from time import time
 import bisect
 from copy import deepcopy 
 import math
-
 
 def genericMax(a,b):
     if a >= b:
@@ -33,7 +32,6 @@ def genericMaxList(list_generic):
             max_val=elmt
     return max_val
     
-
 def step():
     if config.getOptValue("step"):
         printColor("Appuyez sur n'importe quelle touche pour continuer.",c='y',align_left=True,force=True)

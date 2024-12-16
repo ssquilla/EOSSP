@@ -2,9 +2,9 @@ from ..Utils.Utils import *
 from ..Utils.config import *
 config = Config()
 
-from .solution_composantes import *
-from .historique import Historique
-from .historique import PREPROCESSING,NO_EVENT,END_ITERATION,END_RUN,BACKUP,END_OPERATEUR
+from .componentPlan import *
+from .history import History
+from .history import PREPROCESSING,NO_EVENT,END_ITERATION,END_RUN,BACKUP,END_OPERATOR
 
 from time import time
 from mpi4py import *
@@ -15,27 +15,25 @@ from copy import deepcopy,copy
 from matplotlib import patches
 import matplotlib.pyplot as plt
 import os
-#from bisect import insort_right
-#from bisect import insort_left
 
 class Solver:
     class Solution:
-        def __init__(self,constellation,start_date):
-            self.objectif = (0,0)
-            self.modes_retenus = []
+        def __init__(self,constellation,startDate):
+            self.objective = (0,0)
+            self.selectedModes = []
             self.solCCAs = {s : {} for s in constellation.satellites} # liste de solutions CCA
-            self.historique = Historique(constellation,start_date)
+            self.history = History(constellation,startDate)
         
-        def resetHistorique(self,constellation,start_date):
-            self.historique = Historique(constellation,start_date)
+        def resetHistory(self,constellation,startDate):
+            self.historique = History(constellation,startDate)
             
-        def redemarrer(self,constellation):
-            self.objectif = (0,0)
-            self.modes_retenus = []
+        def restart(self,constellation):
+            self.objective = (0,0)
+            self.selectedModes = []
             self.solCCAs = {s : {} for s in constellation.satellites} # liste de solutions CCA
             
-        def getModesRetenus(self):
-            return self.modes_retenus
+        def getSelectedModes(self):
+            return self.selectedModes
         
         def getSolCCA(self,s,cca):
             return self.solCCAs[s][cca]
@@ -43,38 +41,38 @@ class Solver:
         def getSolCCAs(self):
             return self.solCCAs
         
-        def MAJObjectif(self,constellation):
-            self.objectif = sum([constellation.getRequete(r).getMode(m).getRecompense() for (r,m) in self.modes_retenus]),sum([constellation.getRequete(r).getMode(m).getScoreTemporel() for (r,m) in self.modes_retenus])
+        def updateObjective(self,constellation):
+            self.objective = sum([constellation.getRequest(r).getMode(m).getUtility() for (r,m) in self.selectedModes]),sum([constellation.getRequest(r).getMode(m).getScoreTemporel() for (r,m) in self.selectedModes])
             
-        def remplacerMode(self,r,m,constellation):
-            for i,(rr,mm) in enumerate(self.modes_retenus):
+        def replaceMode(self,r,m,constellation):
+            for i,(rr,mm) in enumerate(self.selectedModes):
                 if rr==r:
-                    self.modes_retenus[i] = (r,m)
-                    self.MAJObjectif(constellation)
+                    self.selectedModes[i] = (r,m)
+                    self.updateObjective(constellation)
                     return
             raise ValueError("Requête non présente")
             
-        def ajouterModeRetenu(self,mode,constellation):
+        def addSelectedMode(self,mode,constellation):
             r,m = mode
             if config.verifMode():
-                assert(r not in [rr for (rr,mm) in self.modes_retenus])
-            self.modes_retenus.append((r,m))
-            self.MAJObjectif(constellation)
+                assert(r not in [rr for (rr,mm) in self.selectedModes])
+            self.selectedModes.append((r,m))
+            self.updateObjective(constellation)
             
-        def retirerRequete(self,r,constellation):
-            for i,(rr,mm) in enumerate(self.modes_retenus):
+        def removeRequest(self,r,constellation):
+            for i,(rr,mm) in enumerate(self.selectedModes):
                 if rr == r:
-                    self.modes_retenus.pop(i)
-                    self.MAJObjectif(constellation)
+                    self.selectedModes.pop(i)
+                    self.updateObjective(constellation)
                     return
             raise ValueError("requête non présente dans la solution : "+str(r))
     
-        def retirerModeRetenu(self,mode,constellation):
-            self.modes_retenus.remove(mode)
-            self.MAJObjectif(constellation)
+        def removeSelectedMode(self,mode,constellation):
+            self.selectedModes.remove(mode)
+            self.updateObjective(constellation)
             
-        def setModesRetenus(self,modes,constellation):
-            self.modes_retenus = modes
+        def setSelectedModes(self,modes,constellation):
+            self.selectedModes = modes
             requetes = []
             for (r,m) in modes:
                 if(r in requetes):
@@ -82,42 +80,42 @@ class Solver:
                     raise ValueError("Demande d'ajout de requêtes en double : ",r)
                 requetes.append(r)
             
-            self.MAJObjectif(constellation)
+            self.updateObjective(constellation)
         
         def setSolCCAs(self,sol):
             self.solCCAs = sol
         
-        def getObjectif(self):
-            return self.objectif
+        def getObjective(self):
+            return self.objective
         
-        def ajouterInformationAdditionnelle(self,cle,valeur):
-            self.historique.ajouterInformationAdditionnelle(cle,valeur)
+        def addInformation(self,cle,valeur):
+            self.history.addInformation(cle,valeur)
         
         def __str__(self):
             msg = "---------- Solution ----------\n"
-            msg += "| requêtes retenus : "+str(sorted([x[0] for x in self.modes_retenus]))+' ' +str(len(self.modes_retenus)) + ' modes\n'
-            msg += "| objectif : " + str(self.objectif) +'\n'
+            msg += "| selected requests : "+str(sorted([x[0] for x in self.selectedModes]))+' ' +str(len(self.selectedModes)) + ' modes\n'
+            msg += "| objective : " + str(self.objective) +'\n'
             return msg
         
-    def __init__(self,constellation,start,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
-        self.modeleDeTransition = modeleDeTransition
+    def __init__(self,constellation,start,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+        self.transitionModel = transitionModel
         self.tlim = min(tlim,config.getOptValue("time"))
         self.shiftDisplay = 1 # paramètre d'affichage
-        self.start_date = start
+        self.startDate = start
         id_mpi = MPI.COMM_WORLD.Get_rank()
-        seed_option = config.getOptValue("seed")
-        self.generateur_aleatoire_perturbation = rd.Random(id_mpi+seed_option)
-        global start_date
-        start_date = self.start_date
+        configuredSeed = config.getOptValue("seed")
+        self.randomizerPerturbation = rd.Random(id_mpi+configuredSeed)
+        global START_DATE
+        START_DATE = self.startDate
         # initialisation des CCAs
-        activites = constellation.extraireActivitesRequetesActives(None)
+        activities = constellation.extractActivitiesActiveRequests(None)
         
         if CCAs is not None:
-            self.grapheDependances = CCAs
+            self.dependenciesGraph = CCAs
         else:
-            self.grapheDependances = GroupeComposantesActivitesStatiques(constellation,activites,modeleDeTransition)
-            printMaster(self.grapheDependances,c='b')
-            printMaster("Durée des précalculs (CCA etc...) :",time()-self.start_date,c='g')
+            self.dependenciesGraph = StaticCCAsGroup(constellation,activities,transitionModel)
+            printMaster(self.dependenciesGraph,c='b')
+            printMaster("Precomputation duration (CCA etc...) :",time()-self.startDate,"(s)",c='g')
         
         # amorcage solution initiale
         if solution is not None:
@@ -127,80 +125,80 @@ class Solver:
             for s in self.solution.getSolCCAs():
                 for cca in self.solution.getSolCCAs()[s]:
                     self.solution.getSolCCA(s,cca).notifierPlanAJour(False,False)
-                    if not modeleDeTransition.estTimeDependent():
-                        self.plansCritiques(constellation,(s,cca)) # on remet a jour les plans
-            self.verifierSolutionSiVerifMode(constellation,modeleDeTransition)
+                    if not transitionModel.isTimeDependent():
+                        self.computeCriticalPlans(constellation,(s,cca)) # on remet a jour les plans
+            self.verifySolutionIfVerifyMode(constellation,transitionModel)
         else:
             self.solution = self.Solution(constellation,start)
-            for (s,cca) in self.grapheDependances.getComposantes():
+            for (s,cca) in self.dependenciesGraph.getComponents():
                 self.setSolCCA(s,cca,SolCCA(cca,s))       
-        self.solution.ajouterInformationAdditionnelle("duree de construction du modele de transition",dt_construction_transition)
+        self.solution.addInformation("transition model building duration: ",dt_construction_transition)
         self.dt_construction_transition = dt_construction_transition
         
         if MPI.COMM_WORLD.Get_rank()==0:
-            self.ajouterCommentaire(config.getOptValue("comm"))
+            self.addComment(config.getOptValue("comm"))
         # a voir si on peut se passer de cette liste de candidates
-        self.requetes_candidates = constellation.getToutesRequetes()
+        self.candidateRequests = constellation.getAllRequests()
         # creer les modes courants
-        self.modes_courants = {}
+        self.currentModes = {}
         if config.getOptValue("dynamic"):
-            self.solution.historique.notifierArriveeRequetes(0,constellation.getRequetesDepart())
+            self.solution.history.registerRequestArrival(0,constellation.getRequestsDepart())
         shiftRightDisplay(self.shiftDisplay)
     
     
-    def plansCritiques(self,constellation,id_cca,force=False,print_info=False):
+    def computeCriticalPlans(self,constellation,id_cca,force=False,print_info=False):
         s,cca = id_cca
         if not self.getSolCCA(s,cca).plansAJour() or force:
-            self.getSolCCA(s,cca).MAJPlansCritiques(constellation,self.modeleDeTransition,force=force)
+            self.getSolCCA(s,cca).updateCriticalPlans(constellation,self.transitionModel,force=force)
         assert(len(self.getSolCCA(s,cca).getSequence())==len(self.getSolCCA(s,cca).planEst))
-        if self.modeleDeTransition.estTimeDependent():
+        if self.transitionModel.isTimeDependent():
             if not(self.getSolCCA(s,cca).plansAJour()):
                 raise OutdatedCriticalPlans
         
-    def MAJPlansCritiquesSolution(self,constellation,force=False,print_info=False):
+    def updateCriticalPlansSolution(self,constellation,force=False,print_info=False):
         for s in self.solution.solCCAs:
             for cca in self.solution.solCCAs[s]:
-                self.plansCritiques(constellation,(s,cca),force=force,print_info=print_info)
+                self.computeCriticalPlans(constellation,(s,cca),force=force,print_info=print_info)
             
-    def getTempsEcoule(self):
-        return time()-self.start_date
+    def getTimeElapsed(self):
+        return time()-self.startDate
     
     def getTempsRestant(self):
-        return min(config.getOptValue("time"),self.tlim) - self.getTempsEcoule()
+        return min(config.getOptValue("time"),self.tlim) - self.getTimeElapsed()
     
-    def MAJNouvellesRequetes(self,constellation,date,liste_requetes):
-        self.solution.historique.notifierArriveeRequetes(date,liste_requetes)
-        self.calculerRequetesPresentes(constellation)
+    def updateNewRequests(self,constellation,date,requestList):
+        self.solution.history.registerRequestArrival(date,requestList)
+        self.updatePresentRequests(constellation)
     
-    def invaliderMeilleureSolution(self):
-        self.solution.historique.invaliderMeilleureSolution()
+    def rejectBestSolution(self):
+        self.solution.history.rejectBestSolution()
     
-    def requetesPresentes(self,constellation,cca):
+    def getPresentRequests(self,constellation,cca):
         requetes = []
-        for a in self.grapheDependances.getActivitesComposante(cca):
-            r = constellation.getRequeteActivite(a)
+        for a in self.dependenciesGraph.getActivitiesOfComponent(cca):
+            r = constellation.getRequestActivity(a)
             if r not in requetes:
                 bisect.insort_right(requetes,r)
         return requetes
     
-    def calculerRequetesPresentes(self,constellation):
+    def updatePresentRequests(self,constellation):
         self.requetes_cca = {}
-        for cca in self.grapheDependances.getComposantes():
-            self.requetes_cca[cca] = self.requetesPresentes(constellation,cca)
+        for cca in self.dependenciesGraph.getComponents():
+            self.requetes_cca[cca] = self.getPresentRequests(constellation,cca)
         self.requetes_en_commun = {}
     
     # les requetes presentes sur la cca meme si les activites ne sont pas dans la solution
-    def getRequetesPresentesStatiques(self,cca):
+    def getPresentRequestsStatic(self,cca):
         return self.requetes_cca[cca]
     
     # chercher les requetes presentes sur les deux cca meme si les activites ne sont pas dans la solution
-    def requetesEnCommunStatique(self,cca1,cca2):
+    def staticCommonRequests(self,cca1,cca2):
         couple = tuple(sorted((cca1,cca2)))
         if couple in self.requetes_en_commun:
             return self.requetes_en_commun[couple]
         else:
-            r1 = self.getRequetesPresentesStatiques(cca1)
-            r2 = self.getRequetesPresentesStatiques(cca2)
+            r1 = self.getPresentRequestsStatic(cca1)
+            r2 = self.getPresentRequestsStatic(cca2)
             if len(r1)<len(r2):
                 res = [r for r in r1 if isInSortedList(r2,r)]
             else:
@@ -208,33 +206,33 @@ class Solver:
             self.requetes_en_commun[couple] = res
             return res
     
-    def requetesPresentesDynamiques(self,constellation,id_cca):
+    def getPresentRequestsDynamic(self,constellation,id_cca):
         req = []
         s,cca = id_cca
         for a in self.getSolCCA(s,cca).getSequence():
-            r = constellation.getRequeteActivite(a)
+            r = constellation.getRequestActivity(a)
             if not isInSortedList(req,r):
                 bisect.insort_right(req,r)
         return req
                     
     # calcule les requêtes qui peuvent être déplacées d'une cca à l'autre
     # dynaMique(cca1,cca2) = requetes présente dans la séquence de l'une avec des opportunites dans l'autre
-    def requetesEnCommunDynamique(self,constellation,cca1,cca2):
+    def commonRequestsDynamic(self,constellation,cca1,cca2):
         s1 = cca1[0]
         s2 = cca2[0]
         req_en_commun = []
         req_1 = []
         req_2 = []
-        static1 = self.getRequetesPresentesStatiques(cca1)
-        static2 = self.getRequetesPresentesStatiques(cca2)
+        static1 = self.getPresentRequestsStatic(cca1)
+        static2 = self.getPresentRequestsStatic(cca2)
         for a in self.getSolCCAs(s1,cca1).getSequence():
-            r = constellation.getRequeteActivite(a)
+            r = constellation.getRequestActivity(a)
             if not isInSortedList(req_1,r):
                 bisect.insort_right(req_1,r)
                 if not isInSortedList(req_en_commun,r) and r in static2:
                     bisect.insort_right(req_en_commun,r)
         for a in self.getSolCCAs(s2,cca2).getSequence():
-            r = constellation.getRequeteActivite(a)
+            r = constellation.getRequestActivity(a)
             if not isInSortedList(req_2,r):
                 bisect.insort_right(req_2,r)
                 if not isInSortedList(req_en_commun,r) and r in static1:
@@ -242,108 +240,105 @@ class Solver:
         return req_en_commun,req_1,req_2
     
     def getModeIfPresent(self,r):
-        for (rr,m) in self.solution.modes_retenus:
+        for (rr,m) in self.solution.selectedModes:
             if rr==r:
                 return m
         return None
     
-    def ajouterCommentaire(self,commentaire):
-        self.solution.historique.ajouterCommentaire(commentaire)
+    def addComment(self,commentaire):
+        self.solution.history.addComment(commentaire)
         
-    def MAJHistorique(self,event,constellation):
-        #self.solution.objectif = self.calculerObjectifListeModes(constellation,modes_retenus)
-        #print(self.objectif,modes_retenus)
-        self.solution.MAJObjectif(constellation)
-        mesure = time()-self.start_date
-        self.solution.historique.MAJHistorique(mesure,event,self.solution.getObjectif(),self.solution.getSolCCAs(),self.solution.getModesRetenus(),self.grapheDependances,constellation)
+    def updateHistory(self,event,constellation):
+        self.solution.updateObjective(constellation)
+        mesure = time()-self.startDate
+        self.solution.history.updateHistory(mesure,event,self.solution.getObjective(),self.solution.getSolCCAs(),self.solution.getSelectedModes(),self.dependenciesGraph,constellation)
      
-    def notifierFinOperateur(self,constellation):
+    def notifyEndOperator(self,constellation):
         if config.verifMode():
-            printMaster("fin operateur",time()-self.start_date,force=True)
+            printMaster("end operator",time()-self.startDate,force=True)
         
-        self.MAJHistorique(END_OPERATEUR,constellation)        
+        self.updateHistory(END_OPERATOR,constellation)        
      
-    def notifierPreprocessing(self,constellation):    
-        self.MAJHistorique(PREPROCESSING, constellation)
+    def notifyPreprocessing(self,constellation):    
+        self.updateHistory(PREPROCESSING, constellation)
         
-    def notifierFinIteration(self,constellation):
-        self.MAJHistorique(END_ITERATION, constellation)
+    def notifyEndIteration(self,constellation):
+        self.updateHistory(END_ITERATION, constellation)
 
-    def notifierSansEvenement(self,constellation):
-        self.MAJHistorique(NO_EVENT,constellation)  
+    def notifyNoEvent(self,constellation):
+        self.updateHistory(NO_EVENT,constellation)  
 
-    def notifierFinExecution(self,constellation):
-        self.MAJHistorique(END_RUN, constellation) 
+    def notifyEndExecution(self,constellation):
+        self.updateHistory(END_RUN, constellation) 
 
-    def notifierBackupSolution(self,constellation):
-        self.MAJHistorique(BACKUP, constellation)              
+    def notifyBackupSolution(self,constellation):
+        self.updateHistory(BACKUP, constellation)              
     
-    def supprimerDernierPoint(self):
-        self.solution.historique.supprimerDernierPoint()   
-    
+    def deleteLastPoint(self):
+        self.solution.history.deleteLastPoint()   
+    """
     def gapRecompense(self,constellation):
         up = self.majorantRecompense(constellation)[0]
-        return (up - self.objectif[0])/up<=config.glob.tolerance_opti
+        return (up - self.objective[0])/up<=config.glob.tolerance_opti
             
     def gapTemps(self,constellation):
         up2 = self.majorantRecompense(constellation)[1]
-        return (up2 - self.objectif[1])/up2<=config.glob.tolerance_temps
+        return (up2 - self.objective[1])/up2<=config.glob.tolerance_temps
     
     def majorantRecompense(self,constellation):
-        return self.solution.historique.majorantRecompense(constellation)
-    
-    def initRequetes(self,constellation,noise=0,initFirstMode=True,conserve_old=True):
-        if not conserve_old:
-            self.requetes_candidates = list([r for r in constellation.getRequetes()])# if r not in self.requetesCouvertes()])
+        return self.solution.history.majorantRecompense(constellation)
+    """
+    def initRequests(self,constellation,noise=0,initFirstMode=True,conserveOld=True):
+        if not conserveOld:
+            self.candidateRequests = list([r for r in constellation.getRequests()])
         else:
-            self.requetes_candidates = list([r for r in constellation.getRequetes() if r not in self.requetesCouvertes()])
-        for r in constellation.getToutesRequetes():
-            constellation.getRequete(r).init = False
+            self.candidateRequests = list([r for r in constellation.getRequests() if r not in self.fulfilledRequests()])
+        for r in constellation.getAllRequests():
+            constellation.getRequest(r).init = False
             if initFirstMode:
-                mode = constellation.getRequete(r).getModeCourant(constellation)
+                mode = constellation.getRequest(r).getCurrentMode(constellation)
                 if mode is None:
                     raise ValueError("Mode requête",r,None)
                 m = mode.getId()
-                self.modes_courants[r] = m
+                self.currentModes[r] = m
             else:
-                constellation.getRequete(r).resetModes(constellation,initFirstMode=False,conserve_old=conserve_old)
+                constellation.getRequest(r).resetModes(constellation,initFirstMode=False,conserveOld=conserveOld)
         # Trier les req candidates
         if initFirstMode:
-            rec_courante = lambda r:constellation.getRequete(r).getMode(self.modes_courants[r]).getRecompense()
-            prio = lambda r:constellation.getRequete(r).getPriorite()
+            rec_courante = lambda r:constellation.getRequest(r).getMode(self.currentModes[r]).getUtility()
+            prio = lambda r:constellation.getRequest(r).getPriority()
             cle = lambda r : (prio(r),rec_courante(r))
-            self.requetes_candidates = sorted(self.requetes_candidates,key=cle,reverse=True)
+            self.candidateRequests = sorted(self.candidateRequests,key=cle,reverse=True)
         
         # score candidats modes avant la planif
         modes = []
-        for r in self.requetes_candidates:
+        for r in self.candidateRequests:
             modes.append((r,0))
         self.resetNoise(constellation,noise)
-        self.solution.historique.score_moyen_avant = constellation.scoreObsMoyenne(modes)
-        self.solution.historique.scoreObsMoyenne = self.solution.historique.score_moyen_avant
+        self.solution.history.meanScoreBefore = constellation.meanObservationScore(modes)
+        self.solution.history.meanObservationScore = self.solution.history.meanScoreBefore
         
         
     def resetNoise(self,constellation,amplitude):
-        self.bruit_requete = {}
-        for r in constellation.getToutesRequetes():
-            #self.bruit_requete[r] = (np.random.rand()-0.5)*amplitude
-            self.bruit_requete[r] = (self.generateur_aleatoire_perturbation.random()-0.5)*amplitude
+        self.requestNoise = {}
+        for r in constellation.getAllRequests():
+            self.requestNoise[r] = (self.randomizerPerturbation.random()-0.5)*amplitude
             
-    def resetScoreDestruction(self,constellation,req_couvertes):
-        req_non_couvertes = []
+    def resetScoreDestruction(self,constellation,fulfilledRequests):
+        unfulfilledRequests = []
         i = 0
-        for r in constellation.getToutesRequetes():
-            if r not in req_couvertes:
-                req_non_couvertes.append((i,r))
+        for r in constellation.getAllRequests():
+            if r not in fulfilledRequests:
+                unfulfilledRequests.append((i,r))
                 i += 1
-        poids = []
-        for i,r in req_non_couvertes:
-            poids.append(constellation.getRequete(r).getModeCourant(constellation).getRecompense())
-        rmax = len(req_non_couvertes)
+        weight = []
+        for i,r in unfulfilledRequests:
+            weight.append(constellation.getRequest(r).getCurrentMode(constellation).getUtility())
+        rmax = len(unfulfilledRequests)
         for i in range(rmax):
-            (i,req_choisie) = rd.choices(req_non_couvertes,k=1,weights=poids)[0]
-            self.bruit_requete[r] = -poids[i] + rmax-i
-            poids[i] = 0
+            (i,selected_request) = rd.choices(unfulfilledRequests,k=1,weights=weight)[0]
+            self.requestNoise[r] = -weight[i] + rmax-i
+            weight[i] = 0
     
     def writeSol(self,instance):
         filename = config.donnees.algo_name+'-'+instance
@@ -353,49 +348,49 @@ class Solver:
                     file.write("CCA"+str(cca)+str(sorted(self.getSolCCA(s,cca).sequence))+'\n')
         
     def sortModes(self,modes): # modes = [(r,m,w)]
-        cle = lambda rm : (rm[0]==-1,rm[2] + self.bruit_requete[rm[0]])
+        cle = lambda rm : (rm[0]==-1,rm[2] + self.requestNoise[rm[0]])
         return sorted(modes,key=cle,reverse=True)
         
     def saveSample(self,constellation,add=None):
-        self.solution.historique.saveSample(constellation,add=add)
+        self.solution.history.saveSample(constellation,add=add)
     
-    def tracerObjectif(self):
-        self.solution.historique.tracerObjectif()
+    def plotObjective(self):
+        self.solution.history.plotObjective()
         
-    def tracerCPU(self):
-        self.solution.historique.tracerCPU()
+    def plotCPU(self):
+        self.solution.history.plotCPU()
         
-    def tracerChargeCCAs(self):   
-        self.solution.historique.tracerChargeCCAs(self.grapheDependances)
+    def plotCCAsLoad(self):   
+        self.solution.history.plotCCAsLoad(self.dependenciesGraph)
         
-    def creerMappingCCASlaves(self):
+    def createMappingCCASlaves(self):
         if MPI.COMM_WORLD.Get_size()>1:
-            self.cca_slaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
-            tailles = []
-            for cca in self.grapheDependances.getComposantes():
-                taille =  self.grapheDependances.getTailleComposante(cca)
-                reverse_insort(tailles,(taille,cca))
+            self.ccaSlaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
+            sizes = []
+            for cca in self.dependenciesGraph.getComponents():
+                size =  self.dependenciesGraph.getComponentSize(cca)
+                reverse_insort(sizes,(taille,cca))
             cpu = 0
-            for (taille,cca) in tailles:
-                self.cca_slaves[cpu+1].append(cca)
+            for (size,cca) in sizes:
+                self.ccaSlaves[cpu+1].append(cca)
                 cpu = (cpu + 1) % (MPI.COMM_WORLD.Get_size()-1)
-            for cpu in self.cca_slaves:
-                MPI.COMM_WORLD.send({"cca":self.cca_slaves[cpu]},dest=cpu)
+            for cpu in self.ccaSlaves:
+                MPI.COMM_WORLD.send({"cca":self.ccaSlaves[cpu]},dest=cpu)
         else:
-            self.cca_slaves = {1 : self.grapheDependances.getComposantes()}
+            self.ccaSlaves = {1 : self.dependenciesGraph.getComponents()}
      
-    def mappingCCATaille(self,tailles):
-        # tailles : liste (cca,nb activites a inserer)
-        self.cca_slaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
-        ccas = sorted(tailles,key=itemgetter(0),reverse=True)
+    def mappingCCASize(self,sizes):
+        # sizes : liste (cca,nb activities a inserer)
+        self.ccaSlaves = {cpu : [] for cpu in range(1,MPI.COMM_WORLD.Get_size())}
+        ccas = sorted(sizes,key=itemgetter(0),reverse=True)
         cpu = 0
-        for (taille,cca) in ccas:
-            self.cca_slaves[cpu+1].append(cca)
+        for (size,cca) in ccas:
+            self.ccaSlaves[cpu+1].append(cca)
             cpu = (cpu + 1) % (MPI.COMM_WORLD.Get_size()-1)
     
-    def redemarrer(self,constellation):
-        self.solution.modes_retenus = []
-        for (s,cca) in self.grapheDependances.getComposantes():
+    def restart(self,constellation):
+        self.solution.selectedModes = []
+        for (s,cca) in self.dependenciesGraph.getComponents():
                 self.setSolCCA(s,cca,SolCCA(cca,s))
         
         
@@ -405,38 +400,38 @@ class Solver:
         =============================================== 
     """
     
-    def getModesRetenus(self):
-        return self.solution.getModesRetenus()
+    def getSelectedModes(self):
+        return self.solution.getSelectedModes()
     
-    def ajouterModeRetenu(self,mode,constellation):
-        self.solution.ajouterModeRetenu(mode,constellation)
+    def addSelectedMode(self,mode,constellation):
+        self.solution.addSelectedMode(mode,constellation)
         
-    def retirerModeRetenu(self,mode,constellation):
-        self.solution.retirerModeRetenu(mode,constellation)
+    def removeSelectedMode(self,mode,constellation):
+        self.solution.removeSelectedMode(mode,constellation)
         
     def getBest(self):
-        return self.solution.historique.getBest()
+        return self.solution.history.getBest()
     
     def restartBestSolution(self,constellation):
-        best_objectif,best_solution,best_modes_retenus = self.solution.historique.getBest()
-        self.solution.setSolCCAs(best_solution)
-        self.solution.setModesRetenus(best_modes_retenus, constellation)
+        bestObjective,bestSolution,bestSelectedModes = self.solution.history.getBest()
+        self.solution.setSolCCAs(bestSolution)
+        self.solution.setSelectedModes(bestSelectedModes, constellation)
     
     def getSolutionObservations(self):
         sol = {s : [] for s in self.getSolCCAs()}
         for s in sol:
-            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getDebut())
+            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getStartDate())
             for cca in ccas:
                 for a in cca.getSequence():
                     sol[s].append(a)
         return sol   
     
-    def extraireSequences(self):
+    def extractSequences(self):
         seq = {}
         for s in self.getSolCCAs():
             if s not in seq:
                 seq[s] = []
-            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getDebut())
+            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getStartDate())
             for cca in ccas:
                 seq[s].append(cca.getSequence())
         return seq
@@ -447,14 +442,14 @@ class Solver:
     def getSolution(self):
         sol = {s : [] for s in self.getSolCCAs()}
         for s in sol:
-            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getDebut())
+            ccas = sorted([self.getSolCCA(s,cca) for cca in self.getSolCCAs()[s]],key=lambda solcca : solcca.getStartDate())
             for cca in ccas:
                 for a in cca.getSequence():
                     sol[s].append(a)
         return sol            
     
     def getModes(self):
-        return self.solution.modes_retenus
+        return self.solution.selectedModes
     
     def getPlan(self):
         try:
@@ -462,54 +457,54 @@ class Solver:
         except Exception:
             return None
         
-    def requetesCouvertes(self):
-        return [x[0] for x in self.solution.getModesRetenus()]
+    def fulfilledRequests(self):
+        return [x[0] for x in self.solution.getSelectedModes()]
     
-    def retirerRequete(self,r):
-        del self.requetes_candidates[r]
+    def removeRequest(self,r):
+        del self.candidateRequests[r]
     
-    def retirerRequeteCouverte(self,requete):
+    def removeFulfilledRequest(self,request):
         indice = -1
-        for i,(r,m) in enumerate(self.solution.modes_retenus):
-            if r == requete:
+        for i,(r,m) in enumerate(self.solution.selectedModes):
+            if r == request:
                 indice = i
                 mode = (r,m)
                 break
         if indice == -1:
             raise ValueError("Requête non présente")
         else:
-            self.solution.modes_retenus.pop(indice)
+            self.solution.selectedModes.pop(indice)
             return mode
             
-    def remplacerRequeteCouverte(self,requete):
+    def replaceFulfilledRequest(self,request):
         indice = -1
-        for i,(r,m) in enumerate(self.solution.modes_retenus):
-            if r == requete:
+        for i,(r,m) in enumerate(self.solution.selectedModes):
+            if r == request:
                 indice = i
                 break
         if indice == -1:
-            self.solution.modes_retenus.append((r,m))
+            self.solution.selectedModes.append((r,m))
         else:
-            self.solution.modes_retenus[indice] = (r,m)
+            self.solution.selectedModes[indice] = (r,m)
     
-    def setObjectif(self,objectif):
-        self.solution.objectif = objectif
+    def setObjective(self,objective):
+        self.solution.objective = objective
     
-    def setModesRetenus(self,modes_retenus,constellation):
-        self.solution.setModesRetenus(modes_retenus,constellation)
+    def setSelectedModes(self,selectedModes,constellation):
+        self.solution.setSelectedModes(selectedModes,constellation)
             
     """
-        Version qui ne recalcule l'objectif. N'utiliser que si necessaire
+        Version qui ne recalcule l'objective. N'utiliser que si necessaire
     """
-    def ecraserModes(self,modes_retenus):
-        self.solution.modes_retenus = copy(modes_retenus)  
+    def overwriteModes(self,selectedModes):
+        self.solution.selectedModes = copy(selectedModes)  
     
-    def getObjectif(self,constellation=None,recompute=False):
+    def getObjective(self,constellation=None,recompute=False):
         if recompute:
             assert(constellation is not None)
-            return sum([constellation.getRequete(r).getMode(m).getRecompense() for (r,m) in self.solution.modes_retenus])
+            return sum([constellation.getRequest(r).getMode(m).getUtility() for (r,m) in self.solution.selectedModes])
         else:
-            return self.solution.objectif
+            return self.solution.objective
         
     def getSolCCAs(self):
         return self.solution.solCCAs
@@ -528,184 +523,163 @@ class Solver:
                     CONSTRUCTION DU PLAN
         =============================================== 
     """
-    def planEarliestSequence(self,constellation,solution,s,modeleDeTransition=None):
+    def planEarliestSequence(self,constellation,solution,s,transitionModel=None):
         plan = []
-        for i,activite in enumerate(solution):
+        for i,activity in enumerate(solution):
             if(i==0):
-                t = constellation.getSatellite(s).getActivite(activite).getDebut()
+                t = constellation.getSatellite(s).getActivity(activity).getStartDate()
             else:
                 prec = solution[i-1]
-                duree = constellation.getSatellite(s).getActivite(prec).getDuree()
-                start = constellation.getSatellite(s).getActivite(activite).getDebut()
-                if modeleDeTransition is None:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                duration = constellation.getSatellite(s).getActivity(prec).getDuration()
+                start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                if transitionModel is None:
+                    transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                t = max(t + duree + transition,start)
-            plan.append((activite,t))
+                    transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                t = max(t + duration + transition,start)
+            plan.append((activity,t))
         return plan
     
-    def planEarliest(self,constellation,modeleDeTransition=None):
+    def planEarliest(self,constellation,transitionModel=None):
         solution = self.getSolution()
         self.plan = {s : [] for s in solution}
         for s in solution:
-            for i,activite in enumerate(solution[s]):
+            for i,activity in enumerate(solution[s]):
                 if(i==0):
-                    t = constellation.satellites[s].getActivite(activite).getDebut()
+                    t = constellation.getSatellite(s).getActivity(activity).getStartDate()
                 else:
                     prec = solution[s][i-1]
-                    duree = constellation.getSatellite(s).getActivite(prec).getDuree()
-                    start = constellation.satellites[s].getActivite(activite).getDebut()
-                    if modeleDeTransition is None:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                    duration = constellation.getSatellite(s).getActivity(prec).getDuration()
+                    start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                    if transitionModel is None:
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                    t = max(t + duree + transition,start)
-                self.plan[s].append((activite,t))
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                    t = max(t + duration + transition,start)
+                self.plan[s].append((activity,t))
                 
     def planLatest(self,constellation):
-        assert(not self.modeleDeTransition.estTimeDependent())
+        assert(not self.transitionModel.isTimeDependent())
         solution = self.getSolution()
         self.plan = {s : [] for s in solution}
         for s in solution:
             for i in range(len(solution[s])-1,-1,-1):
                 a = solution[s][i]
-                duree = constellation.getSatellite(s).getActivite(a).getDuree()
+                duration = constellation.getSatellite(s).getActivity(a).getDuration()
                 if(i==len(solution[s])-1):
-                    t = constellation.satellites[s].getActivite(activite).getFin() - duree
+                    t = constellation.getSatellite(s).getActivity(activity).getEndDate() - duration
                 else:
                     suivante = solution[s][i+1]
-                    transition = self.getTransition(constellation,s,a,suivante,t+duree,self.modeleDeTransition)
+                    transition = self.getTransition(constellation,s,a,suivante,t+duration,self.transitionModel)
                     die("TO DO")
-                    t = min(t - duree - transition,constellation.satellites[s].getActivite(activite).getFin())
+                    t = min(t - duration - transition,constellation.getSatellite(s).getActivity(activity).getEndDate())
                 self.plan[s].append((a,t))
                 
     # deduit le temps le plus tot pour chaque activite
-    def construirePlan(self,constellation,modeleDeTransition=None):
-        #sequences = self.extraireSequences()
-        self.planEarliest(constellation,modeleDeTransition=modeleDeTransition)
+    def buildPlan(self,constellation,transitionModel=None):
+        self.planEarliest(constellation,transitionModel=transitionModel)
         if config.verifMode():
-            self.verifierFaisabilite(constellation,modeleDeTransition=modeleDeTransition)
+            self.verifyFeasability(constellation,transitionModel=transitionModel)
         
-    def retardTotal(self):
+    def totalTardiness(self):
         pi = 0
         solution = self.getSolution()
         for s in solution:
-            for i,activite in enumerate(solution[s]):
+            for i,activity in enumerate(solution[s]):
                 if(i==0):
-                    t = constellation.satellites[s].getActivite(activite).getDebut()
+                    t = constellation.getSatellite(s).getActivity(activity).getStartDate()
                 else:
                     prec = solution[s][i-1]
-                    duree = constellation.getSatellite(s).getActivite(prec).getDuree()
-                    start = constellation.satellites[s].getActivite(activite).getDebut()
-                    if modeleDeTransition is None:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                    duration = constellation.getSatellite(s).getActivity(prec).getDuration()
+                    start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                    if transitionModel is None:
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                    t = max(t + duree + transition,start)
-                pi_obs = max(0,t+duree-self.constellation.satellites[s].getActivite(a).getFin())
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                    t = max(t + duration + transition,start)
+                pi_obs = max(0,t+duration-self.constellation.getSatellite(s).getActivity(a).getEndDate())
                 pi += pi_obs
         return pi
     
     # renvoie un dict : satellites -> liste de (retard,flexibilite,activite) triée par retard décroissant
-    def retardGaucheDroitePlanParObs(self,constellation,modeleDeTransition=None):
-        retards = {}
+    def cumulatedTardinessLeftToRight(self,constellation,transitionModel=None):
+        tardinesses = {}
         solution = self.getSolution()
         for s in solution:
             retard[s] = []
-            for i,activite in enumerate(solution[s]):
-                start = constellation.satellites[s].getActivite(activite).getDebut()
-                duree = constellation.getSatellite(s).getActivite(prec).getDuree()
+            for i,activity in enumerate(solution[s]):
+                start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                duration = constellation.getSatellite(s).getActivity(prec).getDuration()
                 if(i==0):
-                    t = constellation.satellites[s].getActivite(activite).getDebut()
-                    duree_prec = 0
+                    t = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                    durationPredecessor = 0
                     transition = 0                
                 else:
                     prec = solution[s][i-1]
-                    if modeleDeTransition is None:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                    if transitionModel is None:
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,self.transitionModel)
                     else:
-                        transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                    t = max(t + duree + transition,start)
-                droite = max(0,t-start)
-                gauche = max(0,t+duree-constellation.satellites[s].getActivite(activite).getFin())
-                reverse_insort(retards[s],(droite,gauche,activite))
-        return retards
+                        transition = self.getTransition(constellation,s,prec,activity,t+duration,transitionModel)
+                    t = max(t + duration + transition,start)
+                right = max(0,t-start)
+                left = max(0,t+duration-constellation.getSatellite(s).getActivity(activity).getEndDate())
+                reverse_insort(tardinesses[s],(right,left,activity))
+        return tardinesses 
     
-
-    # renvoie un dict : satellites -> liste de (retard,flexibilite,activite) triée par retard décroissant
-    def retardGaucheDroiteSequenceParObs(self,constellation,sequence,s,modeleDeTransition=None):
-        retards = []
-        for i,activite in enumerate(sequence):
-            start = constellation.satellites[s].getActivite(activite).getDebut()
-            if(i==0):
-                t = constellation.satellites[s].getActivite(activite).getDebut()
-                duree_prec = 0
-                transition = 0
-            else:
-                prec = sequence[i-1]
-                duree_prec = constellation.getSatellite(s).getActivite(prec).getDuree()
-                transition_left = self.getTransition(constellation,s,prec,activite,t+duree_prec,self.modeleDeTransition)
-                t = max(t + duree_prec + transition_left,start)
-            droite = max(0,t-start)
-            gauche = max(0,t+duree_prec-constellation.satellites[s].getActivite(activite).getFin())
-            reverse_insort(retards,(droite,gauche,activite))
-        return retards    
-    
-    def faisabiliteTemporelle(self,constellation):
+    def isTemporallyFeasible(self,constellation):
         self.planEarliest()
         for s in self.plan:
             for i,(p,t) in enumerate(self.plan[s]):
                 if(i<len(self.plan[s])-1):
-                    if(constellation.satellites[s].estObservation(p)):
-                        duree = self.constellation.satellites[s].getObservation(p).getDuree()
+                    if(constellation.getSatellite(s).estObservation(p)):
+                        duration = self.constellation.getSatellite(s).getObservation(p).getDuration()
                     else:
-                        duree = self.dureeVidage(s,p) #self.vidages[s][p] 
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duree,self.modeleDeTransition)
-                    if(t+transition+duree >self.plan[s][i+1][1] + 1e-5):
+                        duration = self.constellation.getSatellite(s).getDownload(p).getDuration()
+                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duree,self.transitionModel)
+                    if(t+transition+duration >self.plan[s][i+1][1] + 1e-5):
                         return False
-                    if(t+duree>self.constellation.satellites[s].getActivite(p).getFin()):
+                    if(t+duration>self.constellation.getSatellite(s).getActivity(p).getEndDate()):
                         return False
         return True
 
-    def planEarliestSequence(self,constellation,solution,s,modeleDeTransition):
+    def planEarliestSequence(self,constellation,solution,s,transitionModel):
         plan = []
-        for i,activite in enumerate(solution):
+        for i,activity in enumerate(solution):
             if(i==0):
-                t = constellation.getSatellite(s).getActivite(activite).getDebut()
+                t = constellation.getSatellite(s).getActivity(activity).getStartDate()
             else:
-                prec = solution[i-1]
-                duree = constellation.getSatellite(s).getActivite(prec).getDuree()
-                start = constellation.getSatellite(s).getActivite(activite).getDebut()
-                if modeleDeTransition is None:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                predecessor = solution[i-1]
+                duration = constellation.getSatellite(s).getActivity(predecessor).getDuration()
+                start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                if transitionModel is None:
+                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                t = max(t + duree + transition,start)
-            plan.append((activite,t))
+                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,transitionModel)
+                t = max(t + duration + transition,start)
+            plan.append((activity,t))
         return plan
     
-    def getTransition(self,constellation,s,a1,a2,start,modeleDeTransition):
-        if modeleDeTransition.estTimeDependent():
-            transition = constellation.getSatellite(s).getTransitionTimeDependent(a1,a2,start,modeleDeTransition)
+    def getTransition(self,constellation,s,a1,a2,start,transitionModel):
+        if transitionModel.isTimeDependent():
+            transition = constellation.getSatellite(s).getTransitionTimeDependent(a1,a2,start,transitionModel)
         else:
-            transition = constellation.getSatellite(s).getTransition(a1,a2,modeleDeTransition)                    
+            transition = constellation.getSatellite(s).getTransition(a1,a2,transitionModel)                    
         return transition
         
-    def faisabiliteTemporelleSequence(self,constellation,sequence,s,modeleDeTransition=None):
-        for i,activite in enumerate(sequence):
+    def isTemporallyFeasibleSequence(self,constellation,sequence,s,transitionModel=None):
+        for i,activity in enumerate(sequence):
             if(i==0):
-                t = constellation.getSatellite(s).getActivite(activite).getDebut()
+                t = constellation.getSatellite(s).getActivity(activity).getStartDate()
             else:
-                prec = sequence[i-1]
-                duree = constellation.getSatellite(s).getActivite(prec).getDuree()
-                start = constellation.getSatellite(s).getActivite(activite).getDebut()
-                if modeleDeTransition is None:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,self.modeleDeTransition)
+                predecessor = sequence[i-1]
+                duration = constellation.getSatellite(s).getActivity(predecessor).getDuration()
+                start = constellation.getSatellite(s).getActivity(activity).getStartDate()
+                if transitionModel is None:
+                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,self.transitionModel)
                 else:
-                    transition = self.getTransition(constellation,s,prec,activite,t+duree,modeleDeTransition)
-                t = max(t + duree + transition,start)
-                if t+constellation.getSatellite(s).getActivite(activite).getDuree() > constellation.getSatellite(s).getActivite(activite).getFin():
+                    transition = self.getTransition(constellation,s,predecessor,activity,t+duration,transitionModel)
+                t = max(t + duration + transition,start)
+                if t+constellation.getSatellite(s).getActivity(activity).getDuration() > constellation.getSatellite(s).getActivity(activity).getEndDate():
                     return False
         return True        
     
@@ -714,37 +688,37 @@ class Solver:
                         RESOLUTION
         =============================================== 
     """
-    def getGrapheComposantes(self):
-        return self.grapheDependances
+    def getGraphComponents(self):
+        return self.dependenciesGraph
     
     """
         afficher les informations de la solution courante.
-        filtres possibles : time,objectif,modes,ratio,best,repartition,obs,requete,size
+        filtres possibles : time,objective,modes,ratio,best,repartition,obs,request,size
         title : indiquer un titre
         temps : date courante
-        start_date : date de début d'execution
+        startDate : date de début d'execution
         constellation : la constellation
         add = dictionnaire de messages optionnels (titre,contenu)
     
     """
-    def afficherInfo(self,temps,start_date,constellation,core=None,color='c',add={},title='Info',filtre=None):
+    def displayInformation(self,temps,startDate,constellation,core=None,color='c',add={},title='Info',filtre=None):
         if core is None or MPI.COMM_WORLD.Get_rank()==core:
             try:
-                self.setObjectif(self.calculerObjectif(constellation))
+                self.setObjective(self.computeObjective(constellation))
             except Exception as e:
                 pass
             shift = getDisplayDepth()
             shiftLeftDisplay(shift-1)
             self.filtre = filtre
-            self.solution.historique.filtre = filtre
+            self.solution.history.filtre = filtre
             title_size_max = 30
             title_string = title[0:max(len(title),title_size_max)]
             title_before = (title_size_max - len(title_string))//2
             title_after = title_size_max - len(title_string) - title_before
             center = 4 + title_size_max 
-            largeur = 120
-            left = (largeur-center)//2
-            right = largeur - left - center
+            width = 120
+            left = (width-center)//2
+            right = width - left - center
             printColor("\n")
             title_msg = "[" + " "*title_before + title + title_after*" " + " ]"
             left_msg = " " + (left-2)*"-" + " " 
@@ -753,58 +727,52 @@ class Solver:
             for text in add:
                 printColor("| "+str(text)+" : " + str(add[text]),c=color)
             if filtre is None or 'time' in filtre:
-                printColor("| temps écoulé : ",(temps-start_date)//60,"minutes",(temps-start_date)%60,c=color)
+                printColor("| temps écoulé : ",(temps-startDate)//60,"minutes",(temps-startDate)%60,c=color)
             if filtre is None or 'obj' in filtre:
-                printColor("| objectif : ",self.getObjectif(),c=color)
+                printColor("| objective : ",self.getObjective(),c=color)
             if filtre is None or "modes" in filtre:
-                printColor("| modes retenus : ",len(self.solution.modes_retenus),c=color)
-            lines = str(self.solution.historique).split('\n')
+                printColor("| modes retenus : ",len(self.solution.selectedModes),c=color)
+            lines = str(self.solution.history).split('\n')
             for line in lines:
                 if len(line)>0:
                     printColor(line,c=color)
-            printColor(' ' + (largeur-1)*"-",c=color)
+            printColor(' ' + (width-1)*"-",c=color)
             shiftRightDisplay(shift-1)
             
-    def insererSequences(self,constellation,sequences):
-        requetes_retenues = [x[0] for x in self.solution.modes_retenus]
+    def insertSequences(self,constellation,sequences):
+        selectedRequests = [x[0] for x in self.solution.selectedModes]
         for s,cca in sequences:
-            seq = [a for a in sequences[cca] if constellation.getRequeteActivite(a) in requetes_retenues]
+            seq = [a for a in sequences[cca] if constellation.getRequestActivity(a) in selectedRequests]
             #print("set sequence",s,cca)
             self.getSolCCA(s,cca).setSequence(constellation,seq)
     
-    def intersectionActivites(self,constellation,r,composantes):
-        nouveau_mode = self.modes_courants.get(r)
-        ancien_mode = nouveau_mode - 1
-        act_ancien = [x[1] for x in constellation.getRequete(r).getMode(ancien_mode).getCouples()]
-        if nouveau_mode is None:
+    def intersectionActivities(self,constellation,r,composantes):
+        newMode = self.currentModes.get(r)
+        oldMode = newMode - 1
+        act_ancien = [x[1] for x in constellation.getRequest(r).getMode(oldMode).getPairs()]
+        if newMode is None:
             return act_ancien,[],[]
-        act_nouveau_mode = [x[1] for x in constellation.getRequete(r).getMode(nouveau_mode).getCouples()]
-        retrait = []
-        prevalider = {}
-        intersection_working = {}
-        for o in act_nouveau_mode:
+        act_newMode = [x[1] for x in constellation.getRequest(r).getMode(newMode).getPairs()]
+        removals = []
+        prevalidations = {}
+        intersectionWorking = {}
+        for o in act_newMode:
             cca = composantes.find(o)
-            if o in act_ancien and o in self.etat_recherche.activities_done[(r,ancien_mode)]:
-                if cca not in prevalider:
-                    prevalider[cca] = []
-                prevalider[cca].append(o)
-            elif o in self.etat_recherche.activities_working[(r,ancien_mode)]:
-                if cca not in intersection_working:
-                    intersection_working[cca] = []
-                intersection_working[cca].append(o)
+            if o in act_ancien and o in self.etat_recherche.activities_done[(r,oldMode)]:
+                if cca not in prevalidations:
+                    prevalidations[cca] = []
+                prevalidations[cca].append(o)
+            elif o in self.etat_recherche.activities_working[(r,oldMode)]:
+                if cca not in intersectionWorking:
+                    intersectionWorking[cca] = []
+                intersectionWorking[cca].append(o)
         for o in act_ancien:
-            if o not in act_nouveau_mode:
-                retrait.append(o)
+            if o not in act_newMode:
+                removals.append(o)
         
-        return retrait,prevalider,intersection_working
-    """
-    def calculerObjectif(self,constellation):
-        return self.calculerObjectifListeModes(constellation,self.solution.modes_retenus)
-    
-    def calculerObjectifListeModes(self,constellation,modes):
-        return sum([constellation.getRequete(r).getMode(m).getRecompense() for (r,m) in modes]),sum([constellation.getRequete(r).getMode(m).getScoreTemporel() for (r,m) in modes])
-   """
-    def terminerProcessus(self):
+        return removals,prevalidations,intersectionWorking
+
+    def terminateProcessus(self):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         size = comm.Get_size()
@@ -813,57 +781,57 @@ class Solver:
                 comm.send({'fin':True},dest=i)
         comm.Barrier()
     
-    def getModeActivites(self,constellation,r,m):
-        activites = []
-        for s in self.constellation.getRequete(r).getMode(m).getActivites():
-            for o in self.constellation.getRequete(r).getMode(m).getActivites()[s]:
-                if o not in activites:
-                    activites.append(o)
-        return activites
+    def getModeActivities(self,constellation,r,m):
+        activities = []
+        for s in self.constellation.getRequest(r).getMode(m).getActivities():
+            for o in self.constellation.getRequest(r).getMode(m).getActivities()[s]:
+                if o not in activities:
+                    activities.append(o)
+        return activities
     
-    def processusDispo(self,freeCPUs):
+    def getAvailableProcesses(self,freeCPUs):
         return freeCPUs!=[]
     
-    def choisirCPU(self,freeCPUs):
+    def choseCPU(self,freeCPUs):
         return freeCPUs.pop()
     
-    def recompenseBruitee(self,constellation,r,m):
-        return (constellation.getRequete(r).getMode(m).getRecompense() + self.bruit_requete[r],constellation.getRequete(r).getMode(m).getScoreTemporel())
+    def noiseUtility(self,constellation,r,m):
+        return (constellation.getRequest(r).getMode(m).getUtility() + self.requestNoise[r],constellation.getRequest(r).getMode(m).getScoreTemporel())
     
-    def mappingCCAObservationsCourantes(self,constellation,failed):
-        mapping_obs = {}
-        for r in self.requetes_candidates:
-            m = constellation.getRequete(r).getModeCourant().getId()
-            w = constellation.getRequete(r).getModeCourant().getRecompense()
-            for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-                cca = self.grapheDependances.getActiviteCCA(o)
-                if cca not in mapping_obs:
-                    mapping_obs[cca] = {}
-                if (r,m,w) not in mapping_obs[cca]:
-                    mapping_obs[cca][(r,m,w)] = []
-                mapping_obs[cca][(r,m,w)].append(o)
+    def mappingCCACurrentObservations(self,constellation,failed):
+        mappingObservations = {}
+        for r in self.candidateRequests:
+            m = constellation.getRequest(r).getCurrentMode().getId()
+            w = constellation.getRequest(r).getCurrentMode().getUtility()
+            for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+                cca = self.dependenciesGraph.getActivityCCA(o)
+                if cca not in mappingObservations:
+                    mappingObservations[cca] = {}
+                if (r,m,w) not in mappingObservations[cca]:
+                    mappingObservations[cca][(r,m,w)] = []
+                mappingObservations[cca][(r,m,w)].append(o)
         
-        mapping_obs,sequences_cca = self.filtrer(constellation,mapping_obs,failed)    
-        return mapping_obs,sequences_cca
+        mappingObservations,sequencesCCA = self.filtrer(constellation,mappingObservations,failed)    
+        return mappingObservations,sequencesCCA
         
-    # si retrait est None on retire toutes les activites du mode. Sinon on retire la liste 'retrait'
-    def retirerModeSolution(self,constellation,mode,retrait=None):
+    # si removals est None on retire toutes les activities du mode. Sinon on retire la liste 'removals'
+    def removeModeFromSolution(self,constellation,mode,removals=None):
         r,m = mode
         cca = {}                     
-        for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-            if retrait is None or o in retrait:
-                cca_o = self.grapheDependances.getActiviteCCA(o)
+        for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+            if removals is None or o in removals:
+                cca_o = self.dependenciesGraph.getActivityCCA(o)
                 if (s,cca_o) not in cca:
                     cca[(s,cca_o)] = []
                 cca[(s,cca_o)].append(o)
         for (s,cca_a) in cca:
-            self.getSolCCA(s,cca_a).retirerListeActivites(constellation,cca[(s,cca_a),self.modeleDeTransition])
+            self.getSolCCA(s,cca_a).retirerListeActivites(constellation,cca[(s,cca_a),self.transitionModel])
                               
-    def supprimerRequete(self,constellation,r):
-        if r in self.modes_courants:
-            del self.modes_courants[r]
-        if r in self.requetes_candidates:
-            self.requetes_candidates.remove(r)
+    def deleteRequest(self,constellation,r):
+        if r in self.currentModes:
+            del self.currentModes[r]
+        if r in self.candidateRequests:
+            self.candidateRequests.remove(r)
             for cca in self.ccaRequetes[r]:
                 self.retraitRequeteCCA(cca,r)
             del self.ccaRequetes[r]
@@ -874,73 +842,65 @@ class Solver:
                         GRAPHIQUES
         =============================================== 
     """
-    def tracerHistorique(self,init=True):
-        return self.solution.historique.tracer(init)
-    
-    def tracerActivite(self,constellation,annoter=False):
+
+    def plotActivity(self,constellation,annotate=False):
         f,ax = plt.subplots(figsize=(15,6))
-        couleurObs = 'c'
-        couleurVid = 'g'
-        couleurTrans = 'r'
-        neutre = 'k'
+        colorObs = 'c'
+        colorVid = 'g'
+        colorTrans = 'r'
+        
         for s in self.plan:
-            
             #horizon obs
-            for p in constellation.satellites[s].getObservations():
-                debut = constellation.satellites[s].getObservation(p).getDebut()
-                fin = constellation.satellites[s].getObservation(p).getFin()
-                ax.plot([debut,fin],[s,s],'-'+couleurObs,alpha=1,linewidth=2)
-            for p in constellation.satellites[s].getVidages():
-                debut = constellation.satellites[s].getVidage(p).getDebut()
-                fin = constellation.satellites[s].getVidage(p).getFin()
-                ax.plot([debut,fin],[s,s],'-'+couleurVid,alpha=1,linewidth=2)
+            for p in constellation.getSatellite(s).getObservations():
+                startDate = constellation.getSatellite(s).getObservation(p).getStartDate()
+                endDate = constellation.getSatellite(s).getObservation(p).getEndDate()
+                ax.plot([startDate,endDate],[s,s],'-'+colorObs,alpha=1,linewidth=2)
+            for p in constellation.getSatellite(s).getDownloads():
+                startDate = constellation.getSatellite(s).getDownload(p).getStartDate()
+                endDate = constellation.getSatellite(s).getDownload(p).getEndDate()
+                ax.plot([startDate,endDate],[s,s],'-'+colorVid,alpha=1,linewidth=2)
             
             for i,(p,t) in enumerate(self.plan[s]):
-                #ax.scatter([t],[s],c=neutre,marker="+")
-                if(constellation.satellites[s].estVidage(p)):
-                    couleur = couleurVid
-                    duree = self.vidages[s][p]
+                if(constellation.getSatellite(s).isDownload(p)):
+                    color = colorVid
+                    duration = constellation.getSatellite(s).getDownload(p).getDuration()
                     lab = 'vidage'
                 else:
-                    couleur = couleurObs
-                    duree = constellation.satellites[s].getObservations()[p].getDuree()
+                    color = colorObs
+                    duration = constellation.getSatellite(s).getObservations()[p].getDuration()
                     lab = 'observation'
-                ax.add_patch(patches.Rectangle((t,s-1/2),duree,1,color=couleur,fill=True,label=lab))
-                #ax.plot([t,t+duree],[s,s],color=couleur,label=lab,linewidth=50)
+                ax.add_patch(patches.Rectangle((t,s-1/2),duration,1,color=color,fill=True,label=lab))
                 
                 if i<len(self.plan[s])-1:
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duree,self.modeleDeTransition)
-                    ax.add_patch(patches.Rectangle((t+duree,s-1/2),transition,1,color=couleurTrans,fill=True,label='transition'))
-                    #ax.plot([t+duree,t+duree+transition],[s,s],'--'+couleurTrans,label='transition',linewidth=50)
-                if(annoter):
+                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duration,self.transitionModel)
+                    ax.add_patch(patches.Rectangle((t+duration,s-1/2),transition,1,color=colorTrans,fill=True,label='transition'))
+                if(annotate):
                     ax.annotate('{}'.format(self.sol[s][i][0]),xy=(self.sol[s][i][1], s),xytext=(0, 3),textcoords="offset points",ha='center', va='bottom',color='k')           
         
         plt.yticks(sorted(list(constellation.satellites.keys())))
-        if(annoter):
+        if(annotate):
             plt.xlabel("time (s)")
             plt.ylabel("satellite id")
         plt.grid(axis='y')
         ax.xaxis.set_tick_params(labelsize=15)
         ax.yaxis.set_tick_params(labelsize=15)
-        a,b,modes = self.solution.historique.getBest()
+        a,b,modes = self.solution.history.getBest()
         file = config.getOptValue("instance")["file"]
         folder = config.getOptValue("instance")["folder"]
         algo = config.donnees.algo_name
-        #plt.title(config.glob.filename +  " - " +str(config.glob.size) + ' processes - Plan : '+str(len(modes))+" requests")
-        
+        #plt.title(config.glob.filename +  " - " +str(config.glob.size) + ' processes - Plan : '+str(len(modes))+" requests")        
         plt.savefig('results/plan/plan_'+folder+"_"+file+"_"+algo+"_"+str(config.glob.size)+".png")
-        #legend_without_duplicate_labels(ax)
         return f
             
-    def tracerPertesModes(self):
+    def plotModesLosses(self):
         rangs = {}
         perte = []
         f,(ax1,ax2) = plt.subplots(1,2)
-        for r,m in self.solution.modes_retenus:
-            tri = sorted([self.constellation.getRequete(r).getMode(mm).getRecompense() for mm in self.constellation.getRequete(r).getModes()],reverse=True)
+        for r,m in self.solution.selectedModes:
+            tri = sorted([self.constellation.getRequest(r).getMode(mm).getUtility() for mm in self.constellation.getRequest(r).getModes()],reverse=True)
             best = tri[0]
             for i,rec in enumerate(tri):
-                if(rec==self.constellation.getRequete(r).getMode(m).getRecompense()):
+                if(rec==self.constellation.getRequest(r).getMode(m).getUtility()):
                     if i not in rangs:
                         rangs[i] = 1
                     else:
@@ -948,16 +908,12 @@ class Solver:
                     perte.append(100*(best-rec)/best)
                     break
         ax1.set(xlabel='rank of selected modes', ylabel='count')
-        ax1.set_title("rank of selected modes - "+str(len(self.solution.modes_retenus))+"/"+str(len(self.constellation.getToutesRequetes())) + " covered")
+        ax1.set_title("rank of selected modes - "+str(len(self.solution.selectedModes))+"/"+str(len(self.constellation.getAllRequests())) + " covered")
         ax2.set(xlabel='reward loss compared to the best mode (%)', ylabel='count')
         ax2.set_title("reward loss of selected modes")
            
         n1,bins1,p1 = ax1.hist(rangs,bins=np.arange(0,max(rangs)))
         n2,bins2,p2 = ax2.hist(perte)
-        
-        #print("LATEX")
-        #print(histToLatex(n1,bins1,"mode rank","mode count"))
-        #print(histToLatex(n2,bins2,"loss compared to the best mode (\%)","mode count"))
         return f
     
     
@@ -966,124 +922,121 @@ class Solver:
                         VERIF/DEBUG
         =============================================== 
     """
-    def verifierListes(self):
-        req_retenus = [x[0] for x in self.solution.modes_retenus]
-        assert(len(np.unique(req_retenus))==len(req_retenus))
-        for requete in self.requetes_candidates:
-            assert(requete not in [x[0] for x in self.solution.modes_retenus])
-        for requete in [x[0] for x in self.solution.modes_retenus]:
-            assert(requete not in [x[0] for x in self.modes_candidats])
-        for (r,m) in self.solution.modes_retenus:
-            assert((r,m) not in self.modes_candidats)
-            assert((r,m) not in [x[0] for x in self.modes_retires[r]])
-        for r in self.requetes_candidats:
-            for m in self.getRequete(r).modes_candidats:
-                assert((r,m) not in [x[0] for x in self.modes_retires[r]])
+    def verifyLists(self):
+        selectedRequests = [x[0] for x in self.solution.selectedModes]
+        assert(len(np.unique(selectedRequests))==len(selectedRequests))
+        for request in self.candidateRequests:
+            assert(request not in [x[0] for x in self.solution.selectedModes])
+        for request in [x[0] for x in self.solution.selectedModes]:
+            assert(request not in [x[0] for x in self.candidateModes])
+        for (r,m) in self.solution.selectedModes:
+            assert((r,m) not in self.candidateModes)
+            assert((r,m) not in [x[0] for x in self.removedModes[r]])
+        for r in self.candidateRequests:
+            for m in self.getRequest(r).candidateModes:
+                assert((r,m) not in [x[0] for x in self.removedModes[r]])
         
-        for r in self.modes_retires:
-            for ((rr,m),i) in self.modes_retires[r]:
-                if(r in self.requetes_candidates):
-                    for m in self.getRequete(r).modes_candidats:
+        for r in self.removedModes:
+            for ((rr,m),i) in self.removedModes[r]:
+                if(r in self.candidateRequests):
+                    for m in self.getRequest(r).candidateModes:
                         print((r,m))
-                assert(m not in self.modes_candidats[r])
+                assert(m not in self.candidateModes[r])
     
-    def verifierMode(self,constellation,r,m):
-        for s,o in constellation.getRequete(r).getMode(m).getCouples():
-            _,cca = self.grapheDependances.getActiviteCCA(o)
+    def verifyMode(self,constellation,r,m):
+        for s,o in constellation.getRequest(r).getMode(m).getPairs():
+            _,cca = self.dependenciesGraph.getActivityCCA(o)
             if not o in self.getSolCCA(s,cca).getSequence():
                 print(self.getSolCCA(s,cca),o)
                 comm = MPI.COMM_WORLD
                 rank = comm.Get_rank()
-                coeur = "coeur : "+str(rank)
-                raise ValueError(coeur,"time : ",time()-self.start_date,"activité manquante",s,o,'mode',(r,m))
+                coeur = "process: "+str(rank)
+                raise ValueError(coeur,"time: ",time()-self.startDate,"missing activity",s,o,'mode',(r,m))
         if r != -1:
-            if not constellation.getRequete(r).getMode(m).acceptable(constellation):
-                raise ValueError(coeur,"time : ",time()-self.start_date,"contenu du mode non acceptable (construction non consistante ?)",constellation.getRequete(r).getMode(m))
+            if not constellation.getRequest(r).getMode(m).acceptable(constellation):
+                raise ValueError(coeur,"time: ",time()-self.startDate,"content of the mode is unacceptable (inconsistant intialization?)",constellation.getRequest(r).getMode(m))
     
-    def verifierPresenceModeVidage(self,constellation):
+    def verifyDownloadModeSelection(self,constellation):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
-        coeur = "coeur : "+str(rank)        
-        for (s,d) in constellation.getRequete(-1).getCouples():
-            _,cca = self.grapheDependances.getActiviteCCA(d)
+        coeur = "process: "+str(rank)        
+        for (s,d) in constellation.getRequest(-1).getPairs():
+            _,cca = self.dependenciesGraph.getActivityCCA(d)
             if d not in self.getSolCCA(s,cca).getSequence():
-                raise ValueError(coeur,"time : ",time()-self.start_date,"Vidage non présente",d,self.getSolCCA(s,cca).getSequence())
+                raise ValueError(coeur,"time: ",time()-self.startDate,"Missing download slot",d,self.getSolCCA(s,cca).getSequence())
         
-    def verifierModes(self,constellation):
+    def verifyModes(self,constellation):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
-        coeur = "coeur : "+str(rank)         
-        self.verifierPresenceModeVidage(constellation)
-        for (r,m) in self.solution.modes_retenus:
-            self.verifierMode(constellation,r,m)
+        coeur = "process: "+str(rank)         
+        self.verifyDownloadModeSelection(constellation)
+        for (r,m) in self.solution.selectedModes:
+            self.verifyMode(constellation,r,m)
         for s in self.getSolCCAs():
             for cca in self.getSolCCAs()[s]:
                 for o in self.getSolCCA(s,cca).getSequence():
                     find = False
-                    for (r,m) in self.solution.modes_retenus:
-                        if (s,o) in constellation.getRequete(r).getMode(m).getCouples():
+                    for (r,m) in self.solution.selectedModes:
+                        if (s,o) in constellation.getRequest(r).getMode(m).getPairs():
                             find = True
                             break
                     if not find:
-                        r = constellation.getRequeteActivite(o)
-                        typ = constellation.getRequete(r).getType()
-                        print("mode courant :",constellation.getRequete(r).getModeCourant(constellation))
-                        print("modes de la requete")
-                        for m in constellation.getRequete(r).modes:
-                            print(constellation.getRequete(r).getMode(m))
-                        raise ValueError(coeur,"time : ",time()-self.start_date,'activité sans mode',s,o,cca,typ,r,".Requête couverte :",r in self.requetesCouvertes())
+                        r = constellation.getRequestActivity(o)
+                        typ = constellation.getRequest(r).getType()
+                        print("current mode:",constellation.getRequest(r).getCurrentMode(constellation))
+                        print("modes of the request")
+                        for m in constellation.getRequest(r).modes:
+                            print(constellation.getRequest(r).getMode(m))
+                        raise ValueError(coeur,"time: ",time()-self.startDate,'activity with no mode',s,o,cca,typ,r,".Fulfilled requests:",r in self.fulfilledRequests())
     
-    def verifierCCA(self,constellation):
+    def verifyCCAs(self,constellation):
         for s in self.getSolCCAs():
             for cca in self.getSolCCAs()[s]:
-                #printColor(self.getSolCCA(s,cca).debut,self.getSolCCA(s,cca).fin,c='m')
-                faisable = self.getSolCCA(s,cca).sequenceFaisable(constellation,self.modeleDeTransition)
+                faisable = self.getSolCCA(s,cca).sequenceFaisable(constellation,self.transitionModel)
                 if not faisable:
-                    die('CCA infaisable',self.getSolCCA(s,cca),"retard=",self.getSolCCA(s,cca).retardSequence(constellation,self.getSolCCA(s,cca).sequence,self.modeleDeTransition))
+                    die('infeasible CCA',self.getSolCCA(s,cca),"tardiness=",self.getSolCCA(s,cca).retardSequence(constellation,self.getSolCCA(s,cca).sequence,self.transitionModel))
                 
-    def verifierUniciteModes(self):
+    def verifyModeUniqueness(self):
         unique = []
-        for (r,m) in self.solution.modes_retenus:
+        for (r,m) in self.solution.selectedModes:
             if(r in unique):
-                raise ValueError('requête couverte par plusieurs modes')
+                raise ValueError('request covered by several modes')
             else:
                 unique.append(r)
     
-    def verifierFaisabilite(self,constellation,modeleDeTransition=None):
-        self.verifierCCA(constellation)
+    def verifyFeasability(self,constellation,transitionModel=None):
+        self.verifyCCAs(constellation)
         for s in self.plan:
             transitions = []
-            if modeleDeTransition is None:
-                modeleDeTransition = self.modeleDeTransition
+            if transitionModel is None:
+                transitionModel = self.transitionModel
             for i,(p,t) in enumerate(self.plan[s]):
                 if(i<len(self.plan[s])-1):
-                    duree = constellation.satellites[s].getActivite(p).getDuree()
-                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duree,modeleDeTransition)
+                    duration = constellation.getSatellite(s).getActivity(p).getDuration()
+                    transition = self.getTransition(constellation,s,p,self.plan[s][i+1][0],t+duration,transitionModel)
                     transitions.append(transition)
-                    if(t+transition+duree >self.plan[s][i+1][1] + 1e-5):
-                        #print(t+transition+duree,self.plan[s][i+1][1],s,i)
-                        raise ValueError('transition debordante')
-                    if(t+duree>constellation.satellites[s].getActivite(p).getFin()):
-                        #printColor("transitions : ",transitions)
-                        print("retard :",t+duree-constellation.satellites[s].getActivite(p).getFin())
-                        debut = constellation.satellites[s].getActivite(p).getDebut()
-                        fin = constellation.satellites[s].getActivite(p).getFin()
-                        printColor("activité", (s,p),"date",t,'durée',duree,"fenetre",debut,fin,c='r')
-                        print([(p,self.grapheDependances.getActiviteCCA(p),t) for (p,t) in self.plan[s]])
-                        raise ValueError('retard fenetre : les CCA sont probablement dans le désordre')
+                    if(t+transition+duration >self.plan[s][i+1][1] + 1e-5):
+                        raise ValueError('transition finishing after next observation start date')
+                    if(t+duration>constellation.getSatellite(s).getActivity(p).getEndDate()):
+                        print("tardiness:",t+duration-constellation.getSatellite(s).getActivity(p).getEndDate())
+                        startDate = constellation.getSatellite(s).getActivity(p).getStartDate()
+                        endDate = constellation.getSatellite(s).getActivity(p).getEndDate()
+                        printColor("activity", (s,p),"date",t,'duration',duration,"window",startDate,endDate,c='r')
+                        print([(p,self.dependenciesGraph.getActivityCCA(p),t) for (p,t) in self.plan[s]])
+                        raise ValueError('window tardiness:CCAs solutions are maybe disordered')
 
-    def verifierRequetesActives(self,constellation):
+    def verifyActiveRequests(self,constellation):
         if config.getOptValue("dynamic"):
-            for (r,m) in self.solution.modes_retenus:
-                if not constellation.getRequete(r).estActif():
+            for (r,m) in self.solution.selectedModes:
+                if not constellation.getRequest(r).estActif():
                     raise ValueError("Requête inactive")
         
-    def verifierSolutionSiVerifMode(self,constellation,modeleDeTransition=None):
+    def verifySolutionIfVerifyMode(self,constellation,transitionModel=None):
         if config.getOptValue("verif"):
-            self.verifierSolution(constellation,modeleDeTransition=modeleDeTransition)
+            self.verifierSolution(constellation,transitionModel=transitionModel)
         
-    def verifierSolution(self,constellation,modeleDeTransition=None):
-        self.construirePlan(constellation,modeleDeTransition=modeleDeTransition)
-        self.verifierRequetesActives(constellation)
-        self.verifierModes(constellation)
-        #self.verifierUniciteModes()
+    def verifierSolution(self,constellation,transitionModel=None):
+        self.buildPlan(constellation,transitionModel=transitionModel)
+        self.verifyActiveRequests(constellation)
+        self.verifyModes(constellation)
+        #self.verifyModeUniqueness()

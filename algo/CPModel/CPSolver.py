@@ -11,8 +11,8 @@ if config.getOptValue("help"):
 else: 
     from ..model.solution import *
     from ..model.constellation import *
-    from ..model.composantes import *
-    from ..model.solution_composantes import *
+    from ..model.components import *
+    from ..model.componentPlan import *
     
     import math
     from time import time

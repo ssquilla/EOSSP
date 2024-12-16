@@ -10,9 +10,9 @@ if config.getOptValue("help"):
 else:
     from ..model.solution import *
     from ..model.constellation import *
-    from ..model.composantes import *
-    from ..model.solution_composantes import *
-    from ..model.graphes import *
+    from ..model.components import *
+    from ..model.componentPlan import *
+    from ..model.graph import *
     
     from time import time
     from time import sleep

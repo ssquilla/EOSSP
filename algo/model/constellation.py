@@ -39,7 +39,7 @@ from ..Utils.Utils import *
 from ..Utils.config import *
 config = Config()
 
-from .graphes import *
+from .graph import *
 
 global TYPE_PERIODIC
 TYPE_PERIODIC = "PERIODIC"
@@ -51,8 +51,8 @@ global TYPE_STEREO
 TYPE_STEREO = "ONE_SHOT_STEREO"
 global TYPE_SYSTEMATIC
 TYPE_SYSTEMATIC = "SYSTEMATIC"
-global TYPE_VIDAGE
-TYPE_VIDAGE = "DOWNLOAD"
+global TYPE_DOWNLOAD
+TYPE_DOWNLOAD = "DOWNLOAD"
 
 
 
@@ -62,70 +62,70 @@ TYPE_VIDAGE = "DOWNLOAD"
         =========================================================
 """
 class Mode: # obs = {s:[o]}
-    def __init__(self,idRequete,idMode,recompense,obs,scoreTemporel):
+    def __init__(self,idRequest,idMode,utility,obs,temporalUtility):
         if not config.glob.score_temporel:
-            if not scoreTemporel==0:
-                print("requête",idRequete,"score temporel hors domaine.")
-                print("mode :",idRequete,idMode,"contenu :",obs)
-            assert(scoreTemporel==0)
-        self.idRequete = idRequete
+            if not temporalUtility==0:
+                print("requête",idRequest,"score temporel hors domaine.")
+                print("mode :",idRequest,idMode,"contenu :",obs)
+            assert(temporalUtility==0)
+        self.idRequest = idRequest
         self.idMode = idMode
-        self.recompense = recompense
-        self.scoreTemporel = scoreTemporel
-        assert(recompense>0 or self.idRequete == -1)
+        self.utility = utility
+        self.temporalUtility = temporalUtility
+        assert(utility>0 or self.idRequest == -1)
         self.observations = obs
-        self.couples = []
+        self.pairs = []
         for s in self.observations:
             for o in self.observations[s]:
-                self.couples.append((s,o))
+                self.pairs.append((s,o))
     
     def acceptable(self,constellation):
-        return constellation.getRequete(self.idRequete).acceptable(self.couples,constellation)
+        return constellation.getRequest(self.idRequest).acceptable(self.pairs,constellation)
         
-    def getScoreTemporel(self):
-        return self.scoreTemporel
+    def getTemporalUtility(self):
+        return self.temporalUtility
     
-    def getCouples(self):
-        return self.couples
+    def getPairs(self):
+        return self.pairs
     
     def getId(self):
         return self.idMode
 
-    def getRequete(self):
-        return self.idRequete
+    def getRequest(self):
+        return self.idRequest
 
-    def getRecompense(self):
-        return self.recompense
+    def getUtility(self):
+        return self.utility
         
-    def getActivites(self):
+    def getActivities(self):
         return self.observations
     
-    def getActivitesSatellite(self,s):
+    def getActivitiesBySatellite(self,s):
         return self.observations.get(s,[])
     
     def __str__(self):
-        return "Mode "+str((self.idRequete,self.idMode)) +" : "+str(self.observations) + " recompense = " +str(self.recompense)
+        return "Mode "+str((self.idRequest,self.idMode)) +" : "+str(self.observations) + " utility = " +str(self.utility)
 
 
-class RelationOrdreRequete:
-    def __init__(self,r_id,mode_id,score_bruite):
-        self.r_id = r_id
-        self.mode_id = mode_id
-        self.score_bruite = score_bruite
+class RequestOrdering:
+    def __init__(self,requestId,modeId,noisedUtility):
+        self.requestId = requestId
+        self.modeId = modeId
+        self.noisedUtility = noisedUtility
 
     def getId(self):
-        return self.r_id
+        return self.requestId
     
     def getIdMode(self):
-        return self.mode_id
+        return self.modeId
     
-    def getRecompense(self):
-        return self.score_bruite
+    def getUtility(self):
+        return self.noisedUtility
     
     def __eq__(self,other):
         if self.getId() ==-1:
             if other.getId() == -1:
-                assert(self.getRecompense()[0] == 0 and other.getRecompense()[0] ==0)
+                assert(self.getUtility()[0] == 0 and other.getUtility()[0] ==0)
                 return True
             else:
                 return False
@@ -133,7 +133,7 @@ class RelationOrdreRequete:
             return self.getId() == other.getId() and self.getIdMode() == other.getIdMode()
     
     def __str__(self):
-        return "Order("+str(self.r_id)+","+str(self.mode_id)+":"+str(self.score_bruite)+")"
+        return "Order("+str(self.requestId)+","+str(self.modeId)+":"+str(self.noisedUtility)+")"
     
     def __ne__(self,other):
         return not self.__eq__(other)
@@ -142,7 +142,7 @@ class RelationOrdreRequete:
         if self.getId()==-1:
             return False
         else:
-            return (self.getRecompense() < other.getRecompense()) or (self.getRecompense() == other.getRecompense() and self.getId() > other.getId())
+            return (self.getUtility() < other.getUtility()) or (self.getUtility() == other.getUtility() and self.getId() > other.getId())
 
     def __gt__(self,other):
         if self.getId()==-1:
@@ -154,7 +154,7 @@ class RelationOrdreRequete:
             if other.getId()==-1:
                 return False
             else:
-                return (self.getRecompense() > other.getRecompense()) or (self.getRecompense() == other.getRecompense() and self.getId() < other.getId())
+                return (self.getUtility() > other.getUtility()) or (self.getUtility() == other.getUtility() and self.getId() < other.getId())
 
     def __ge__(self,other):
         return self.__gt__(other) or self.__eq__(other)
@@ -162,70 +162,70 @@ class RelationOrdreRequete:
     def __le__(self,other):
         return self.__lt__(other) or self.__eq__(other)
 
-class Requete:
-        def __init__(self,idRequete,priorite,type_requete,activites):
+class Request:
+        def __init__(self,idRequest,priority,requestType,activities):
             self.actif = not config.getOptValue("dynamic")
-            self.idRequete = idRequete
-            self.priorite = priorite
-            self.setType(type_requete)
-            seed_option = config.getOptValue("seed")
-            self.generateur_aleatoire_observations = rd.Random(seed_option)
-            self.generateur_aleatoire_liste_observations = rd.Random(seed_option)
-            self.generateur_aleatoire_modes = rd.Random(seed_option)
+            self.idRequest = idRequest
+            self.priority = priority
+            self.setType(requestType)
+            configuredSeed = config.getOptValue("seed")
+            self.observationRandomizer = rd.Random(configuredSeed)
+            self.observationListRandomizer = rd.Random(configuredSeed)
+            self.modesRandomizer = rd.Random(configuredSeed)
             self.init = False # modes déjà initialisés = False
-            # time-slot -> liste de triplets (reward,satellite,indice activite)
-            self.activitesParTimeSlots = activites # {timeSlot:[(s,o,reward)]}
+            # time-slot -> liste de triplets (utility,satellite,indice activite)
+            self.activitiesByTimeSlots = activities # {timeSlot:[(s,o,utility)]}
             # satellites -> liste des indices des activités
-            self.liste_activites_par_satellite= {}
-            self.couples_satellites_activites = []
-            self.map_rso = {}
+            self.activitiesListBySatellite= {}
+            self.pairsSatellitesActivities = []
+            self.mapRSO = {}
             self.modes = {}
             self.idMode = 0
-            for timeSlot in self.activitesParTimeSlots:
-                for i,(r,s,o) in enumerate(self.activitesParTimeSlots[timeSlot]):
-                    self.map_rso[o] = (timeSlot,i)
-                    if(s,o) not in self.couples_satellites_activites:
-                        self.couples_satellites_activites.append((s,o))
-                    if s not in self.liste_activites_par_satellite:
-                        self.liste_activites_par_satellite [s] = []
-                    if o not in self.liste_activites_par_satellite [s]:
-                        self.liste_activites_par_satellite [s].append(o)
-            self.mode_candidat = None
-            self.maintient = {}
-            self.modes_generes = 0
-            assert(len(self.couples_satellites_activites)==sum([len(self.liste_activites_par_satellite [s]) for s in self.liste_activites_par_satellite]))
+            for timeSlot in self.activitiesByTimeSlots:
+                for i,(r,s,o) in enumerate(self.activitiesByTimeSlots[timeSlot]):
+                    self.mapRSO[o] = (timeSlot,i)
+                    if(s,o) not in self.pairsSatellitesActivities:
+                        self.pairsSatellitesActivities.append((s,o))
+                    if s not in self.activitiesListBySatellite:
+                        self.activitiesListBySatellite [s] = []
+                    if o not in self.activitiesListBySatellite [s]:
+                        self.activitiesListBySatellite [s].append(o)
+            self.candidateMode = None
+            self.activitiesHeld = {}
+            self.generatedModesCounter = 0
+            assert(len(self.pairsSatellitesActivities)==sum([len(self.activitiesListBySatellite [s]) for s in self.activitiesListBySatellite]))
 
-        def setType(self,type_requete):
-            self.type_requete = type_requete
+        def setType(self,requestType):
+            self.requestType = requestType
         
-        def estActif(self):
+        def isActive(self):
             return self.actif
         
-        def activer(self):
+        def activate(self):
             self.actif = True
             
-        def desactiver(self):
+        def deactivate(self):
             self.actif = False
             
-        def getCCAPresentes(self,grapheDep):
+        def getCCAs(self,graphDep):
             res = []
-            for (s,a) in self.couples_satellites_activites:
-                cca = grapheDep.getActiviteCCA(a)
+            for (s,a) in self.pairsSatellitesActivities:
+                cca = graphDep.getActivityCCA(a)
                 if cca not in res:
                     res.append(cca)
             return res
                
-        def resetCandidats(self):
-            self.maintient = {}
+        def resetCandidateModes(self):
+            self.activitiesHeld = {}
             self.idMode = 0
-            self.mode_candidat = None
+            self.candidateMode = None
         
-        def getModesGeneres(self):
-            return self.modes_generes
+        def countGeneratedModes(self):
+            return self.generatedModesCounter
         
-        def findActivite(self,a):
-            timeSlot,i = self.map_rso[a]
-            return self.activitesParTimeSlots[timeSlot][i]
+        def findActivity(self,a):
+            timeSlot,i = self.mapRSO[a]
+            return self.activitiesByTimeSlots[timeSlot][i]
         
         def getModes(self):
             return self.modes.keys()
@@ -233,13 +233,13 @@ class Requete:
         def getMode(self,m):
             return self.modes[m]
             
-        def getScoreActivite(self,constellation,a):
-            return self.findActivite(a)
+        def getActivityUtility(self,constellation,a):
+            return self.findActivity(a)
             
         def getTimeSlot(self,a):
-            return self.map_rso[a][0]
+            return self.mapRSO[a][0]
          
-        def trierParTimeSlot(self,liste_act):
+        def sortByTimeSlot(self,liste_act):
             tri = {}
             for a in liste_act:
                 ts = self.getTimeSlot(a)
@@ -248,95 +248,94 @@ class Requete:
                 tri[ts].append(a)
             return tri
                 
-        def creerGrapheRequete(self):
-            type_requete = self.getType()
-            r = self.idRequete
-            if type_requete == TYPE_MONO:
-                graphe = GrapheMono(self)
-            elif type_requete == TYPE_STEREO:
-                graphe = GrapheStereo(self)
-            elif type_requete == TYPE_PERIODIC:
-                graphe = GraphePeriodic(self)
-            elif type_requete == TYPE_SYSTEMATIC:
-                graphe = GrapheSystematic(self)
-            elif type_requete == TYPE_VIDAGE:
-                graphe = GrapheVidage(self)
+        def createRequestGraph(self):
+            requestType = self.getType()
+            r = self.idRequest
+            if requestType == TYPE_MONO:
+                graph = GraphMono(self)
+            elif requestType == TYPE_STEREO:
+                graph = GraphStereo(self)
+            elif requestType == TYPE_PERIODIC:
+                graph = GraphPeriodic(self)
+            elif requestType == TYPE_SYSTEMATIC:
+                graph = GraphSystematic(self)
+            elif requestType == TYPE_DOWNLOAD:
+                graph = GraphDownloads(self)
             else:
-                raise ValueError("type inconnu",type_requete)
-            self.graphe = graphe
-            self.contenu_a_valider = None
+                raise ValueError("type inconnu",requestType)
+            self.graph = graph
+            self.dataToValidate = None
         
-        def getGraphe(self):
-            return self.graphe
+        def getGraph(self):
+            return self.graph
         
-        def getObservationsStructures(self,contenu):
-            listeObs = []
+        def getObservationsStructures(self,data):
+            listObs = []
             obs = {}
             timeSlots = {}
-            for timeSlot in self.activitesParTimeSlots:
-                for (r,s,a) in self.activitesParTimeSlots[timeSlot]:
-                    if a in contenu:
+            for timeSlot in self.activitiesByTimeSlots:
+                for (r,s,a) in self.activitiesByTimeSlots[timeSlot]:
+                    if a in data:
                         if s not in obs:
                             obs[s] = []
                         obs[s].append(a)
-                        listeObs.append((r,s,a))
+                        listObs.append((r,s,a))
                         timeSlots[(r,s,a)]=timeSlot
-            return listeObs,obs,timeSlots
+            return listObs,obs,timeSlots
         
         """
         # Utilisé dans le LNS : on ne sait pas encore si le mode sera effectivement candidat
-        def genererMode(self,rewards,inactives):
-            recompense_chemin,contenu,noeuds_a_valider = self.graphe.plusLongChemin(rewards,inactives)
-            self.contenu_a_valider = contenu.copy()
-            return recompense_chemin,contenu,noeuds_a_valider
+        def genererMode(self,utilitys,inactives):
+            cumulatedPathReward,contenu,verticesToValidate = self.graph.plusLongChemin(utilitys,inactives)
+            self.dataToValidate = contenu.copy()
+            return cumulatedPathReward,contenu,verticesToValidate
         """
-        def validerModeCandidat(self,constellation):
-            mode = self.mode_a_valider
-            self.mode_a_valider = None
+        def validateCandidateMode(self,constellation):
+            mode = self.modeToValidate
+            self.modeToValidate = None
             self.modes[self.idMode] = mode
             self.idMode += 1
-            self.modes_generes += 1
-            self.mode_candidat = mode
+            self.generatedModesCounter += 1
+            self.candidateMode = mode
             return mode
         
-        def annulerMode(self):
-            self.contenu_a_valider = None
-            self.mode_candidat = None
+        def cancelMode(self):
+            self.dataToValidate = None
+            self.candidateMode = None
             self.modes[self.idMode] = None
         
         # Utilisé dans l'ancienne version de LNS
-        def genererModeEtValider(self,constellation,rewards,inactives):
-            recompense_chemin,contenu,noeuds_a_valider = self.graphe.plusLongChemin(rewards,inactives)
-            if len(contenu)>0:
-                listeObs,obs,timeSlots = self.getObservationsStructures(contenu)
-                recompense,scoreTemporel = self.scoreListeObservations(listeObs,constellation,timeSlots)
-                mode = Mode(self.getId(),self.idMode,recompense,obs,scoreTemporel)
+        def generateAndValidateMode(self,constellation,utilities,inactives):
+            cumulatedPathReward,data,verticesToValidate = self.graph.plusLongChemin(utilities,inactives)
+            if len(data)>0:
+                listObs,obs,timeSlots = self.getObservationsStructures(data)
+                recompense,temporalUtility = self.scoreObservationsList(listObs,constellation,timeSlots)
+                mode = Mode(self.getId(),self.idMode,recompense,obs,temporalUtility)
                 self.modes[self.idMode] = mode
                 self.idMode += 1
-                self.modes_generes += 1
-                self.mode_candidat = mode
-                return mode,noeuds_a_valider
+                self.generatedModesCounter += 1
+                self.candidateMode = mode
+                return mode,verticesToValidate
             else:
-                self.mode_candidat = None
+                self.candidateMode = None
                 return None,[]
             
-        def maintenirObs(self,explication):
-            self.maintient = {}
-            for (s,o) in self.mode_candidat.getCouples():
-                if o not in explication:
-                    if s not in self.maintient:
-                        self.maintient[s] = []
-                    self.maintient[s].append(o)
-            #print("maint",self.maintient)
+        def holdObservation(self,explaination):
+            self.activitiesHeld = {}
+            for (s,o) in self.candidateMode.getPairs():
+                if o not in explaination:
+                    if s not in self.activitiesHeld:
+                        self.activitiesHeld[s] = []
+                    self.activitiesHeld[s].append(o)
         
         def stats(self,constellation):
             xyz = [0,0,0]
             minCoord = [np.Inf,np.Inf,np.Inf]
             maxCoord = [-np.Inf,-np.Inf,-np.Inf]
             nPoints = 0
-            for timeSlot in self.activitesParTimeSlots:
-                for (r,s,o) in self.activitesParTimeSlots[timeSlot]:
-                    coords = constellation.getSatellite(s).getActivite(o).getCoordonnees()
+            for timeSlot in self.activitiesByTimeSlots:
+                for (r,s,o) in self.activitiesByTimeSlots[timeSlot]:
+                    coords = constellation.getSatellite(s).getActivity(o).getCoordinates()
                     xyz[0] += coords[0]
                     xyz[1] += coords[1]
                     xyz[2] += coords[2]
@@ -349,9 +348,9 @@ class Requete:
         def getMeanTarget(self,constellation):
             xyz = [0,0,0]
             nPoints = 0
-            for timeSlot in self.activitesParTimeSlots:
-                for (r,s,o) in self.activitesParTimeSlots[timeSlot]:
-                        coords = constellation.getSatellite(s).getActivite(o).getCoordonnees()
+            for timeSlot in self.activitiesByTimeSlots:
+                for (r,s,o) in self.activitiesByTimeSlots[timeSlot]:
+                        coords = constellation.getSatellite(s).getActivity(o).getCoordinates()
                         xyz[0] += coords[0]
                         xyz[1] += coords[1]
                         xyz[2] += coords[2]
@@ -359,14 +358,14 @@ class Requete:
             xyz = tuple([elmt/nPoints for elmt in xyz])
             return xyz           
             
-        def statsCoordonnees(self,constellation):
+        def statsCoordinates(self,constellation):
             xyz = [0,0,0]
             minCoord = [np.Inf,np.Inf,np.Inf]
             maxCoord = [-np.Inf,-np.Inf,-np.Inf]
             nPoints = 0
-            for timeSlot in self.activitesParTimeSlots:
-                for (r,s,o) in self.activitesParTimeSlots[timeSlot]:
-                        coords = constellation.getSatellite(s).getActivite(o).getCoordonnees()
+            for timeSlot in self.activitiesByTimeSlots:
+                for (r,s,o) in self.activitiesByTimeSlots[timeSlot]:
+                        coords = constellation.getSatellite(s).getActivity(o).getCoordinates()
                         xyz[0] += coords[0]
                         xyz[1] += coords[1]
                         xyz[2] += coords[2]
@@ -376,34 +375,34 @@ class Requete:
             xyz = tuple([elmt/nPoints for elmt in xyz])
             return xyz,minCoord,maxCoord,nPoints
             
-        def getCouples(self):
-            return self.couples_satellites_activites
+        def getPairs(self):
+            return self.pairsSatellitesActivities
         
-        def getPriorite(self):
-            return self.priorite
+        def getPriority(self):
+            return self.priority
         
-        def getModeCourant(self,constellation):
+        def getCurrentMode(self,constellation):
             if not self.init:
                 self.resetModes(constellation)
-            return self.mode_candidat
+            return self.candidateMode
 
-        def getActivites(self):
-            return self.liste_activites_par_satellite
+        def getActivities(self):
+            return self.activitiesListBySatellite
         
-        def getActivitesSatellite(self,s):
-            return self.liste_activites_par_satellite.get(s,[])
+        def getActivitiesBySatellite(self,s):
+            return self.activitiesListBySatellite.get(s,[])
 
-        def getTimeSlots(self):
-            return list(self.activitesParTimeSlots.keys())
+        def getActivitiesByTimeSlots(self):
+            return list(self.activitiesByTimeSlots.keys())
         
-        def getObservationsParTimeSlot(self,timeSlot):
-            return self.activitesParTimeSlots[timeSlot]
+        def getObservationsByTimeSlot(self,timeSlot):
+            return self.activitiesByTimeSlots[timeSlot]
 
         def getId(self):
-            return self.idRequete
+            return self.idRequest
 
-        def getRecompense(self):
-            return self.recompense
+        def getUtility(self):
+            return self.utility
 
         def getMode(self,m):
             return self.modes[m]
@@ -412,297 +411,292 @@ class Requete:
             return self.modes
 
         def getType(self):
-            return self.type_requete
+            return self.requestType
         
-        def getKModesSuivants(self,constellation,k):
+        def getKNextModes(self,constellation,k):
             liste = []
             for i in range(k):
                 if i<len(self.modes):
                     liste.append(self.modes[i])
                 else:
-                    res = self.getModeSuivantSansExp(constellation)
+                    res = self.getNextModeWithoutExp(constellation)
                     if res is not None:
                         liste.append(res)
                     else:
                         break
             return liste
         
-        def selectionnerObs(self,constellation,listeObs,cleTemporelle,generateur=None):
-            assert(len(listeObs)>0)
-            # listeObs : liste de (r,s,o) 
-            critere = lambda rso : self.scoreObs(rso,constellation,cleTemporelle)
-            r_max = max([critere(rso) for rso in listeObs])
-            obs_max = [rso for rso in listeObs if critere(rso)==r_max]
-            #printColor("choix parmi",obs_max,'activites',c='m')
-            if generateur is None:
-                gen = self.generateur_aleatoire_observations
+        def selectObservation(self,constellation,obsList,temporalKey,generator=None):
+            assert(len(obsList)>0)
+            # obsList : liste de (r,s,o) 
+            criteria = lambda rso : self.scoreObs(rso,constellation,temporalKey)
+            rMax = max([criteria(rso) for rso in obsList])
+            obsMax = [rso for rso in obsList if criteria(rso)==rMax]
+            if generator is None:
+                gen = self.observationRandomizer
             else:
-                gen = generateur
-            id_obs = gen.randint(0,len(obs_max)-1)
-            return obs_max[id_obs]
+                gen = generator
+            id_obs = gen.randint(0,len(obsMax)-1)
+            return obsMax[id_obs]
         
-        def selectionnerListeObs(self,constellation,listeObs,cleTemporelle,k,generateur=None):
-            assert(len(listeObs)>0)         
-            # listeObs : liste de (r,s,o) 
-            critere = lambda rso : self.scoreObs(rso,constellation,cleTemporelle)
-            #r_max = max([critere(rso) for rso in listeObs])
-            #obs_max = [rso for rso in listeObs if critere(rso)==r_max]
-            #printColor("choix parmi",obs_max,'activites',c='m')
-            if generateur is None:
-                gen = self.generateur_aleatoire_liste_observations
+        def selectObservationList(self,constellation,obsList,temporalKey,k,generator=None):
+            assert(len(obsList)>0)         
+            # obsList : liste de (r,s,o) 
+            criteria = lambda rso : self.scoreObs(rso,constellation,temporalKey)
+            if generator is None:
+                gen = self.observationListRandomizer
             else:
-                gen = generateur
+                gen = generator
             # stoquer les valeurs
             values = {}
-            for elmt in listeObs:
-                value = critere(elmt)
+            for elmt in obsList:
+                value = criteria(elmt)
                 if value not in values:
                     values[value] = []
                 values[value].append((value,elmt))
             # conserver les meilleurs groupes de valeurs  
-            elements_selectionnes = []
+            selectedElements = []
             nElmt = 0
             for value in sorted(values,reverse=True):
                 if nElmt + len(values[value])<=k:
                     nElmt += len(values[value])
-                    elements_selectionnes += values[value]
+                    selectedElements += values[value]
                 else:
                     gen.shuffle(values[value])
                     NelmtsDesires = k - nElmt
-                    elements_selectionnes += values[value][:NelmtsDesires]
+                    selectedElements += values[value][:NelmtsDesires]
                     break
-            return elements_selectionnes       
+            return selectedElements       
         
-        def scoreObs(self,rso,constellation,cleTemporelle):
+        def scoreObs(self,rso,constellation,temporalKey):
             # low : temps de reference
-            t = (constellation.getSatellite(rso[1]).getActivite(rso[2]).getDebut()+constellation.getSatellite(rso[1]).getActivite(rso[2]).getFin())/2
+            t = (constellation.getSatellite(rso[1]).getActivity(rso[2]).getStartDate()+constellation.getSatellite(rso[1]).getActivity(rso[2]).getEndDate())/2
             if config.scoring.method=='relative':
-                low = min([constellation.getSatellite(s).getActivite(a).getDebut() for (s,a) in self.couples_satellites_activites])
-                up = max([constellation.getSatellite(s).getActivite(a).getFin() for (s,a) in self.couples_satellites_activites])
+                low = min([constellation.getSatellite(s).getActivity(a).getStartDate() for (s,a) in self.pairsSatellitesActivities])
+                up = max([constellation.getSatellite(s).getActivity(a).getEndDate() for (s,a) in self.pairsSatellitesActivities])
             elif config.scoring.method=='global':
                 low,up = config.donnees.tmin,config.donnees.tmax
             alpha = config.scoring.alpha_weather
-            score = (rso[0],cleTemporelle(rso),0)
+            score = (rso[0],temporalKey(rso),0)
             assert(score>(0,0,0))
             return score
         
-        def nettoyerModesInutiles(self):
+        def removeUnusedModes(self):
             for i in range(self.idMode):
                 if i > 0 and i < self.idMode-1 and i in self.modes:
                     del self.modes[i]
         
         # L'interet est d'ajouter un mode en indice le plus haut
         # Il est la copie du mode d'indice m. Utile quand m est le meilleur mode
-        # connu pour les algo qui utilise le derniermode  comme point de départ  
+        # connu pour les algo qui utilise le dernier mode  comme point de départ  
         # dans la recherche locale.
-        def decalerMode(self,m):
-            if self.idRequete==-1:
+        def shiftMode(self,m):
+            if self.idRequest==-1:
                 return self.idMode
             mode = deepcopy(self.modes[m])
             mode.idMode = self.idMode
-            self.mode_candidat = mode
+            self.candidateMode = mode
             assert(self.idMode not in self.modes)
             self.modes[self.idMode] = mode
             self.idMode += 1
-            self.modes_generes += 1
-            #self.nettoyerModesInutiles()
+            self.generatedModesCounter += 1
+            #self.removeUnusedModes()
             return mode.getId()
         
         # version générique : très couteuse
-        def ajouterMode(self,constellation,liste_activites):
+        def addMode(self,constellation,activitiesList):
             if config.getOptValue("verif"):
-                assert(self.acceptable(liste_activites,constellation))
-            couples = len(liste_activites)==0 or type(liste_activites[0])==tuple
-            if self.idRequete==-1:
-                raise ValueError("impossible de créer de nouveaux modes pour la requête de vidage")
-            rso_liste = []
+                assert(self.acceptable(activitiesList,constellation))
+            pairs = len(activitiesList)==0 or type(activitiesList[0])==tuple
+            if self.idRequest==-1:
+                raise ValueError("can't create new mode for the download request")
+            listRSO = []
             obs = {}
             TS = {}
-            for timeSlot in self.activitesParTimeSlots:
-                for r,s,a in self.activitesParTimeSlots[timeSlot]:
-                    if (couples and (s,a) in liste_activites) or (not couples and a in liste_activites):
+            for timeSlot in self.activitiesByTimeSlots:
+                for r,s,a in self.activitiesByTimeSlots[timeSlot]:
+                    if (pairs and (s,a) in activitiesList) or (not pairs and a in activitiesList):
                         TS[a] = timeSlot
-                        rso_liste.append((r,s,a))
+                        listRSO.append((r,s,a))
                         if s not in obs:
                             obs[s] = []
                         obs[s].append(a)
-            assert(len(rso_liste)>0)
-            lexico = self.scoreListeObservations(rso_liste, constellation, None)       
-            mode = Mode(self.idRequete,self.idMode,lexico[0],obs,lexico[1])
+            assert(len(listRSO)>0)
+            lexico = self.scoreObservationsList(listRSO, constellation, None)       
+            mode = Mode(self.idRequest,self.idMode,lexico[0],obs,lexico[1])
             
             self.modes[self.idMode] = mode
-            self.mode_candidat = mode
+            self.candidateMode = mode
             self.idMode += 1
-            self.modes_generes += 1
+            self.generatedModesCounter += 1
             return mode
  
-        def estimerScore(self,constellation,liste_activites):
-            rso_liste = []
+        def estimateScore(self,constellation,activitiesList):
+            listRSO = []
             obs = {}
             TS = {}
-            for timeSlot in self.activitesParTimeSlots:
-                for r,s,a in self.activitesParTimeSlots[timeSlot]:
-                    if (s,a) in liste_activites:
+            for timeSlot in self.activitiesByTimeSlots:
+                for r,s,a in self.activitiesByTimeSlots[timeSlot]:
+                    if (s,a) in activitiesList:
                         TS[a] = timeSlot
-                        rso_liste.append((r,s,a))
+                        listRSO.append((r,s,a))
                         if s not in obs:
                             obs[s] = []
                         obs[s].append(a)
-            assert(len(rso_liste)>0)
-            return self.scoreListeObservations(rso_liste, constellation, None)
+            assert(len(listRSO)>0)
+            return self.scoreObservationsList(listRSO, constellation, None)
     
-        def getActivitesPresentesCCA(self,grapheDep,liste_cca):
-            activites_cca = []
-            for timeSlot in self.activitesParTimeSlots:
-                for (r,s,a) in self.activitesParTimeSlots[timeSlot]:
-                    if not config.getOptValue("dynamic") or self.estActif():
-                        cca = grapheDep.getActiviteCCA(a)
+        def getActivitiesInCCA(self,graphDep,liste_cca):
+            actitivitiesCCA = []
+            for timeSlot in self.activitiesByTimeSlots:
+                for (r,s,a) in self.activitiesByTimeSlots[timeSlot]:
+                    if not config.getOptValue("dynamic") or self.isActive():
+                        cca = graphDep.getActivityCCA(a)
                         if cca in liste_cca:
-                            activites_cca.append(a)
-            return activites_cca
+                            actitivitiesCCA.append(a)
+            return actitivitiesCCA
         
-        # contenu actuel : activites du mode retenu privé de celles sur les cca a explorer
-        def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-            external_modes = False
-            external_activites = len(contenu_actuel)>0
-            nouveaux_modes = []
-            activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
-            set_cca = set(activites_cca)
-            max_size_ajout = len(activites_cca)
-            combinaisons = []
-            for taille in range(max_size_ajout+1):
-                combinaisons += list(map(list,itertools.combinations(activites_cca,taille)))
-            for combi in combinaisons:
-                liste_nouveau_mode = contenu_actuel + combi
-                if len(combi)>0 or (allow_external_modes and self.acceptable(liste_nouveau_mode,constellation)):
-                    nouveaux_modes.append(self.ajouterMode(constellation, liste_nouveau_mode))
+        # contenu actuel : activities du mode retenu privé de celles sur les cca a explorer
+        def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+            externalModes = False
+            externalActivities = len(currentContent)>0
+            newModes = []
+            actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
+            maxAddSize = len(actitivitiesCCA)
+            combination = []
+            for size in range(maxAddSize+1):
+                combination += list(map(list,itertools.combinations(actitivitiesCCA,size)))
+            for combi in combination:
+                newModes = currentContent + combi
+                if len(combi)>0 or (allowExternalModes and self.acceptable(newModes,constellation)):
+                    newModes.append(self.addMode(constellation, newModes))
                     if len(combi)==0:
-                        external_modes = True
-            return nouveaux_modes,external_modes,external_activites
+                        externalModes = True
+            return newModes,externalModes,externalActivities
             
-        def filtrerModesPresents(self,liste_activites,constellation):
+        def filterPresentModes(self,activitiesList,constellation):
             self.idMode = 0
             if config.verifMode():
-                assert(self.acceptable(liste_activites,constellation))
-            return self.ajouterMode(constellation,liste_activites)
+                assert(self.acceptable(activitiesList,constellation))
+            return self.addMode(constellation,activitiesList)
     
-class RequeteMono(Requete):
-    def __init__(self,idRequete,priorite,activites):
-        super().__init__(idRequete,priorite,TYPE_MONO,activites)
+class MonoRequest(Request):
+    def __init__(self,idRequest,priority,activities):
+        super().__init__(idRequest,priority,TYPE_MONO,activities)
 
-    def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-        external_activites = len(contenu_actuel)>0
-        if len(contenu_actuel)==1:
-            if allow_external_modes:
-                return [],False,external_activites
+    def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+        externalActivities = len(currentContent)>0
+        if len(currentContent)==1:
+            if allowExternalModes:
+                return [],False,externalActivities
             else:
                 return []
-        assert(len(contenu_actuel)==0)
-        nouveaux_modes = []
-        activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
-        for a in activites_cca:
-            liste_nouveau_mode = [a]
-            nouveaux_modes.append(self.ajouterMode(constellation,liste_nouveau_mode))
-        return nouveaux_modes,False,external_activites
+        assert(len(currentContent)==0)
+        newModes = []
+        actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
+        for a in actitivitiesCCA:
+            newModes = [a]
+            newModes.append(self.addMode(constellation,newModes))
+        return newModes,False,externalActivities
     
-    def getBestModeWithoutInactives(self,constellation,inactifs):
-        if not config.getOptValue("dynamic") or self.estActif():
-            activites = [rso for rso in self.activites_candidates if rso[2] not in inactifs]
-            if len(activites)>0:
-                cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-                rso = self.selectionnerObs(constellation,activites,cleTemporelle)
-                recompense,scoreTemporel = self.scoreListeObservations([rso],constellation,cleTemporelle)
+    def getBestModeWithoutInactives(self,constellation,inactives):
+        if not config.getOptValue("dynamic") or self.isActive():
+            activities = [rso for rso in self.candidateActivities if rso[2] not in inactives]
+            if len(activities)>0:
+                temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+                rso = self.selectObservation(constellation,activities,temporalKey)
+                utility,temporalUtility = self.scoreObservationsList([rso],constellation,temporalKey)
                 obs =  {rso[1]:[rso[2]]}
-                self.mode_a_valider = Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-                return self.mode_a_valider
+                self.modeToValidate = Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+                return self.modeToValidate
             else:
-                self.mode_a_valider = None
+                self.modeToValidate = None
                 return None
         else:
             return None
     
-    def acceptable(self,liste_activites,constellation):
-        couples = len(liste_activites)==0 or type(liste_activites[0])==tuple
-        if couples:
-            act = self.couples_satellites_activites
+    def acceptable(self,activitiesList,constellation):
+        pairs = len(activitiesList)==0 or type(activitiesList[0])==tuple
+        if pairs:
+            act = self.pairsSatellitesActivities
         else:
-            act = [x[1] for x in self.couples_satellites_activites]
-        if not sum([x in act for x in liste_activites])==len(liste_activites):
+            act = [x[1] for x in self.pairsSatellitesActivities]
+        if not sum([x in act for x in activitiesList])==len(activitiesList):
             return False
-        return len(liste_activites)==1
+        return len(activitiesList)==1
     
-    def getKMeilleursModes(self,constellation,k):
+    def getKBestModes(self,constellation,k):
         assert(self.modes=={})
-        liste_modes = []
-        if len(self.activites_candidates)==0:
-            self.mode_candidat = None
+        modesList = []
+        if len(self.candidateActivities)==0:
+            self.candidateMode = None
             return []
         else:
             start = time()
-            cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-            liste_observations = self.selectionnerListeObs(constellation,self.activites_candidates,cleTemporelle,k,generateur=None)
+            temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+            observationsList = self.selectObservationList(constellation,self.candidateActivities,temporalKey,k,generator=None)
             end = time()
 
-            for (score,rso) in liste_observations:
+            for (score,rso) in observationsList:
                 start = time()
-                recompense,scoreTemporel,_ = score
+                utility,temporalUtility,_ = score
                 obs_mode =  {rso[1]:[rso[2]]}
-                self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs_mode,scoreTemporel)
-                self.modes[self.idMode] = self.mode_candidat
+                self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs_mode,temporalUtility)
+                self.modes[self.idMode] = self.candidateMode
                 self.idMode += 1    
-                self.modes_generes += 1
-                liste_modes.append(self.mode_candidat)
+                self.generatedModesCounter += 1
+                modesList.append(self.candidateMode)
                 end = time()
-        return liste_modes
+        return modesList
 
-    def resetModes(self,constellation,conserve_old=True,initFirstMode=True):
+    def resetModes(self,constellation,conserveOld=True,initFirstMode=True):
         self.init = True
-        self.resetCandidats()
-        self.activites_candidates = deepcopy(self.activitesParTimeSlots[0])
-        self.first_date = min([constellation.getSatellite(rso_o[1]).getActivite(rso_o[2]).getDebut() for rso_o in self.activites_candidates])
-        self.last_date = max([constellation.getSatellite(rso_o[1]).getActivite(rso_o[2]).getFin() for rso_o in self.activites_candidates])
-        if not conserve_old:
+        self.resetCandidateModes()
+        self.candidateActivities = deepcopy(self.activitiesByTimeSlots[0])
+        self.firstDate = min([constellation.getSatellite(rso_o[1]).getActivity(rso_o[2]).getStartDate() for rso_o in self.candidateActivities])
+        self.lastDate = max([constellation.getSatellite(rso_o[1]).getActivity(rso_o[2]).getEndDate() for rso_o in self.candidateActivities])
+        if not conserveOld:
             self.modes = {}
             self.idMode = 0        
         if initFirstMode:
-            self.construireMode(constellation)
+            self.buildMode(constellation)
         
-    def scoreListeObservations(self,listeObs,constellation,timeSlots):
-        assert(len(listeObs)==1)
-        cleTemporelle = lambda x : self.scoreTemporel(constellation,x)
-        lexico = [self.scoreObs(rso,constellation,cleTemporelle) for rso in listeObs][0]
+    def scoreObservationsList(self,obsList,constellation,timeSlots):
+        assert(len(obsList)==1)
+        temporalKey = lambda x : self.temporalUtility(constellation,x)
+        lexico = [self.scoreObs(rso,constellation,temporalKey) for rso in obsList][0]
         return (lexico[0],lexico[1])
      
-    def defilerActivites(self,explication):
-        assert(explication!=[])
-        len_avant = len(self.activites_candidates)
-        #copie = self.activites_candidates.copy()
-        for i,x in enumerate(self.activites_candidates):
-            if x[2] in explication:
-                self.activites_candidates.pop(i)
+    def shiftActivities(self,explaination):
+        assert(explaination!=[])
+        lenBefore = len(self.candidateActivities)
+        #copie = self.candidateActivities.copy()
+        for i,x in enumerate(self.candidateActivities):
+            if x[2] in explaination:
+                self.candidateActivities.pop(i)
                 break
-        #self.activites_candidates = [x for x in self.activites_candidates if x[2] not in explication]
-        len_apres = len(self.activites_candidates)
-        assert(len_avant == len_apres + len(explication))
+        #self.candidateActivities = [x for x in self.candidateActivities if x[2] not in explaination]
+        lenAfter = len(self.candidateActivities)
+        assert(lenBefore == lenAfter + len(explaination))
         
-    def construireMode(self,constellation):
-        if len(self.activites_candidates)==0:
-            self.mode_candidat = None
+    def buildMode(self,constellation):
+        if len(self.candidateActivities)==0:
+            self.candidateMode = None
         else:
-            cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-            rso = self.selectionnerObs(constellation,self.activites_candidates,cleTemporelle)
-            recompense,scoreTemporel = self.scoreListeObservations([rso],constellation,cleTemporelle)
+            temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+            rso = self.selectObservation(constellation,self.candidateActivities,temporalKey)
+            utility,temporalUtility = self.scoreObservationsList([rso],constellation,temporalKey)
             obs =  {rso[1]:[rso[2]]}
-            self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-            self.modes[self.idMode] = self.mode_candidat
+            self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+            self.modes[self.idMode] = self.candidateMode
             self.idMode += 1
-            self.modes_generes += 1
+            self.generatedModesCounter += 1
      
-    def scoreTemporel(self,constellation,rso):
+    def temporalUtility(self,constellation,rso):
         if config.glob.score_temporel:
-            t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getDebut() - self.first_date
+            t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getStartDate() - self.firstDate
             start = 3*60*60
-            end = self.last_date - self.first_date
+            end = self.lastDate - self.firstDate
             if t<start:
                 return 1
             else:
@@ -710,221 +704,220 @@ class RequeteMono(Requete):
         else:
             return 0
      
-    def getModeSuivant(self,explication,constellation):
-        if self.mode_candidat is not None:
-            self.defilerActivites(explication)
-            self.construireMode(constellation)
-        return self.mode_candidat
+    def getNextMode(self,explaination,constellation):
+        if self.candidateMode is not None:
+            self.shiftActivities(explaination)
+            self.buildMode(constellation)
+        return self.candidateMode
     
-    def getModeSuivantSansExp(self,constellation):
-        if self.mode_candidat is None:
+    def getNextModeWithoutExp(self,constellation):
+        if self.candidateMode is None:
             return None
-        exp = [self.mode_candidat.getCouples()[0][1]] # 1er couple (s,o) : obs
-        return self.getModeSuivant(exp,constellation)
+        exp = [self.candidateMode.getPairs()[0][1]] # 1er couple (s,o) : obs
+        return self.getNextMode(exp,constellation)
 
-class RequeteLongMono(RequeteMono):
-    def __init__(self,idRequete,priorite,activites):
+class LongMonoRequest(MonoRequest):
+    def __init__(self,idRequest,priority,activities):
         self.multiplicateur = 4
-        for t in activites:
-            for i in range(len(activites[t])):
-                activites[t][i] = (activites[t][i][0]*self.multiplicateur,activites[t][i][1],activites[t][i][2])
-        super().__init__(idRequete, priorite, activites)
+        for t in activities:
+            for i in range(len(activities[t])):
+                activities[t][i] = (activities[t][i][0]*self.multiplicateur,activities[t][i][1],activities[t][i][2])
+        super().__init__(idRequest, priority, activities)
         self.setType(TYPE_LONG_MONO) # ecraser le type
     
-class RequeteStereo(Requete):
-    def __init__(self,idRequete,priorite,activites):
-        super().__init__(idRequete,priorite,TYPE_STEREO,activites)
-        assert(len(self.couples_satellites_activites)==sum([len(self.liste_activites_par_satellite [s]) for s in self.liste_activites_par_satellite]))
+class StereoRequest(Request):
+    def __init__(self,idRequest,priority,activities):
+        super().__init__(idRequest,priority,TYPE_STEREO,activities)
+        assert(len(self.pairsSatellitesActivities)==sum([len(self.activitiesListBySatellite [s]) for s in self.activitiesListBySatellite]))
 
-    def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-        if not config.getOptValue("dynamic") or self.estActif():
-            external_activites = len(contenu_actuel)>0
-            if len(contenu_actuel)==2:
-                if allow_external_modes:
-                    return [],False,external_activites
+    def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+        if not config.getOptValue("dynamic") or self.isActive():
+            externalActivities = len(currentContent)>0
+            if len(currentContent)==2:
+                if allowExternalModes:
+                    return [],False,externalActivities
                 else:
                     return []
-            assert(len(contenu_actuel)==0)
-            nouveaux_modes = []
-            activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
-            tri_par_pairs = self.trierParTimeSlot(activites_cca)
-            for idPair in tri_par_pairs:
-                assert(len(tri_par_pairs[idPair])==2)
-                liste_nouveau_mode = tri_par_pairs[idPair]
-                #print(liste_nouveau_mode)
-                nouveaux_modes.append(self.ajouterMode(constellation,liste_nouveau_mode))
-            return nouveaux_modes,False,external_activites
+            assert(len(currentContent)==0)
+            newModes = []
+            actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
+            sortByPairs = self.sortByTimeSlot(actitivitiesCCA)
+            for idPair in sortByPairs:
+                assert(len(sortByPairs[idPair])==2)
+                newModes = sortByPairs[idPair]
+                newModes.append(self.addMode(constellation,newModes))
+            return newModes,False,externalActivities
         else:
-            return [],False,len(contenu_actuel)>0
+            return [],False,len(currentContent)>0
             
             
-    def acceptable(self,liste_activites,constellation):
-        if len(liste_activites)!=2:
+    def acceptable(self,activitiesList,constellation):
+        if len(activitiesList)!=2:
             return False
-        couples = len(liste_activites)==0 or type(liste_activites[0])==tuple
-        if couples:        
-            t1 = self.getTimeSlot(liste_activites[0][1])
-            t2 = self.getTimeSlot(liste_activites[1][1])
+        pairs = len(activitiesList)==0 or type(activitiesList[0])==tuple
+        if pairs:        
+            t1 = self.getTimeSlot(activitiesList[0][1])
+            t2 = self.getTimeSlot(activitiesList[1][1])
         else:
-            t1 = self.getTimeSlot(liste_activites[0])
-            t2 = self.getTimeSlot(liste_activites[1])
+            t1 = self.getTimeSlot(activitiesList[0])
+            t2 = self.getTimeSlot(activitiesList[1])
         return t1 == t2 
     
-    def getCouplesStereo(self):
-        couples = []
-        for ts in self.activitesParTimeSlots:
-            couples.append([(x[1],x[2]) for x in self.activitesParTimeSlots[ts].copy()])
-        return couples
+    def getStereoPairs(self):
+        pairs = []
+        for ts in self.activitiesByTimeSlots:
+            pairs.append([(x[1],x[2]) for x in self.activitiesByTimeSlots[ts].copy()])
+        return pairs
     
-    def selectionnerCoupleActivites(self,listeCouples,constellation):
-        r_max = max(self.scoreCouple(x,constellation) for x in listeCouples)
-        couples_max = [x for x in listeCouples if self.scoreCouple(x,constellation) == r_max]
-        id_couple = self.generateur_aleatoire_observations.randint(0,len(couples_max)-1)
-        return couples_max[id_couple]
+    def selectActivityPairs(self,listepairs,constellation):
+        rMax = max(self.scorePair(x,constellation) for x in listepairs)
+        pairsMax = [x for x in listepairs if self.scorePair(x,constellation) == rMax]
+        id_couple = self.observationRandomizer.randint(0,len(pairsMax)-1)
+        return pairsMax[id_couple]
     
-    def getBestModeWithoutInactives(self,constellation,inactifs):
-        if not config.getOptValue("dynamic") or self.estActif():
-            activites = [rso_couples for rso_couples in self.couples if rso_couples[0][2] not in inactifs and rso_couples[1][2] not in inactifs]
-            if len(activites)==0:
+    def getBestModeWithoutInactives(self,constellation,inactives):
+        if not config.getOptValue("dynamic") or self.isActive():
+            activities = [rso_pairs for rso_pairs in self.pairs if rso_pairs[0][2] not in inactives and rso_pairs[1][2] not in inactives]
+            if len(activities)==0:
                 return None
-            cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-            rso_liste = self.selectionnerCoupleActivites(activites,constellation)
-            recompense,scoreTemporel = self.scoreListeObservations(rso_liste,constellation,cleTemporelle)
-            assert(len(rso_liste)==2) # 2 obs
-            assert(rso_liste[0][1] == rso_liste[1][1]) # même sat
-            obs =  {rso_liste[0][1]:[rso_liste[0][2],rso_liste[1][2]]}
-            mode =  Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-            if self.acceptable(mode.getCouples(),constellation):
-                self.mode_a_valider = mode
-                return self.mode_a_valider
+            temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+            listRSO = self.selectActivityPairs(activities,constellation)
+            utility,temporalUtility = self.scoreObservationsList(listRSO,constellation,temporalKey)
+            assert(len(listRSO)==2) # 2 obs
+            assert(listRSO[0][1] == listRSO[1][1]) # même sat
+            obs =  {listRSO[0][1]:[listRSO[0][2],listRSO[1][2]]}
+            mode =  Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+            if self.acceptable(mode.getPairs(),constellation):
+                self.modeToValidate = mode
+                return self.modeToValidate
             else:
                 return None
         else:
             None
         
-    def scoreListeObservations(self,couple,constellation,timeSlots):
+    def scoreObservationsList(self,couple,constellation,timeSlots):
         assert(len(couple)==2)
-        cleTemporelObs1 = lambda rso : self.scoreTemporelCouple(constellation,(rso,(0,0,0)))
+        cleTemporelObs1 = lambda rso : self.temporalUtilityCouple(constellation,(rso,(0,0,0)))
         score1 = self.scoreObs(couple[0],constellation,cleTemporelObs1)
-        cleTemporelleObs2 = lambda rso : 0
-        score2 = self.scoreObs(couple[1],constellation,cleTemporelleObs2)
+        temporalKeyObs2 = lambda rso : 0
+        score2 = self.scoreObs(couple[1],constellation,temporalKeyObs2)
         return (score1[0] + score2[0],score1[1])
             
-    def getIdPaires(self):
-        return list(self.activitesParTimeSlots.keys())
+    def getIdPairs(self):
+        return list(self.activitiesByTimeSlots.keys())
 
-    def getPaireObservation(self,idPaire):
-        return self.activitesParTimeSlots[idPaire]
+    def getObservationPair(self,idPaire):
+        return self.activitiesByTimeSlots[idPaire]
     
-    def scoreCouple(self,couple,constellation):
-        cleTemporelObs1 = lambda rso : self.scoreTemporelCouple(constellation,(rso,(0,0,0)))
+    def scorePair(self,couple,constellation):
+        cleTemporelObs1 = lambda rso : self.temporalUtilityCouple(constellation,(rso,(0,0,0)))
         score1 = self.scoreObs(couple[0],constellation,cleTemporelObs1)
-        cleTemporelleObs2 = lambda rso : 0
-        score2 = self.scoreObs(couple[1],constellation,cleTemporelleObs2)
+        temporalKeyObs2 = lambda rso : 0
+        score2 = self.scoreObs(couple[1],constellation,temporalKeyObs2)
         return (score1[0] + score2[0],score1[1])
     
-    def resetModes(self,constellation,conserve_old=True,initFirstMode=True):
+    def resetModes(self,constellation,conserveOld=True,initFirstMode=True):
         self.init = True
-        self.resetCandidats()
-        self.couples = [self.activitesParTimeSlots[timeSlot] for timeSlot in self.activitesParTimeSlots] 
-        self.first_date = min([constellation.getSatellite(rso_o[1]).getActivite(rso_o[2]).getDebut() for couple in self.couples for rso_o in couple])
-        self.last_date = max([constellation.getSatellite(rso_o[1]).getActivite(rso_o[2]).getFin() for couple in self.couples for rso_o in couple])
+        self.resetCandidateModes()
+        self.pairs = [self.activitiesByTimeSlots[timeSlot] for timeSlot in self.activitiesByTimeSlots] 
+        self.firstDate = min([constellation.getSatellite(rso_o[1]).getActivity(rso_o[2]).getStartDate() for couple in self.pairs for rso_o in couple])
+        self.lastDate = max([constellation.getSatellite(rso_o[1]).getActivity(rso_o[2]).getEndDate() for couple in self.pairs for rso_o in couple])
         # a = (r,s,o) : observations differents avec le meme sat
-        if not conserve_old:
+        if not conserveOld:
             self.modes = {}
             self.idMode = 0          
         if initFirstMode:
-            self.construireMode(constellation)
+            self.buildMode(constellation)
     
-    def selectionnerListeCouples(self,constellation,listeCouples,cleTemporelle,k,generateur=None):
+    def selectListOfPairs(self,constellation,listeCouples,temporalKey,k,generator=None):
         assert(len(listeCouples)>0)
-        # listeObs : liste de (r,s,o) 
-        critere = lambda couple : self.scoreCouple(couple,constellation)
-        if generateur is None:
-            gen = self.generateur_aleatoire_liste_observations
+        # obsList : liste de (r,s,o) 
+        criteria = lambda couple : self.scorePair(couple,constellation)
+        if generator is None:
+            gen = self.observationListRandomizer
         else:
-            gen = generateur
+            gen = generator
         # stoquer les valeurs
         values = {}
         for elmt in listeCouples:
-            value = critere(elmt)
+            value = criteria(elmt)
             if value not in values:
                 values[value] = []
             values[value].append((value,elmt))
         # conserver les meilleurs groupes de valeurs  
-        elements_selectionnes = []
+        selectedElements = []
         nElmt = 0
         for value in sorted(values,reverse=True):
             if nElmt + len(values[value])<=k:
                 nElmt += len(values[value])
-                elements_selectionnes += values[value]
+                selectedElements += values[value]
             else:
                 gen.shuffle(values[value])
                 NelmtsDesires = k - nElmt
-                elements_selectionnes += values[value][:NelmtsDesires]
+                selectedElements += values[value][:NelmtsDesires]
                 break
-        return elements_selectionnes  
+        return selectedElements  
 
-    def getKMeilleursModes(self,constellation,k):
+    def getKBestModes(self,constellation,k):
         assert(self.modes=={})
-        liste_modes = []
-        if len(self.couples)==0:
-            self.mode_candidat = None
+        modesList = []
+        if len(self.pairs)==0:
+            self.candidateMode = None
             return []
         else:
             start = time()
-            cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-            liste_observations = self.selectionnerListeCouples(constellation,self.couples,cleTemporelle,k,generateur=None)
+            temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+            observationsList = self.selectListOfPairs(constellation,self.pairs,temporalKey,k,generator=None)
             end = time()
-            for (score,couple) in liste_observations:
+            for (score,couple) in observationsList:
                 start = time()
-                recompense,scoreTemporel = score
+                utility,temporalUtility = score
                 rso1,rso2 = couple
                 obs_mode =  {rso1[1]:[rso1[2],rso2[2]]}
-                self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs_mode,scoreTemporel)
-                self.modes[self.idMode] = self.mode_candidat
+                self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs_mode,temporalUtility)
+                self.modes[self.idMode] = self.candidateMode
                 self.idMode += 1 
-                self.modes_generes += 1
-                liste_modes.append(self.mode_candidat)
+                self.generatedModesCounter += 1
+                modesList.append(self.candidateMode)
                 end = time()
-        return liste_modes
+        return modesList
     
-    def testExplicationInCouple(self,explication,couple):
-        for a in explication:
+    def testExplainationInPair(self,explaination,couple):
+        for a in explaination:
             if a == couple[0][2] or a == couple[1][2]:
                 return True
         return False
         
-    def defilerActivites(self,explication):
-        for i in range(len(self.couples)-1,-1,-1):
-            couple = self.couples[i]
-            if self.testExplicationInCouple(explication,couple):
-                self.couples.pop(i)
+    def shiftActivities(self,explaination):
+        for i in range(len(self.pairs)-1,-1,-1):
+            couple = self.pairs[i]
+            if self.testExplainationInPair(explaination,couple):
+                self.pairs.pop(i)
                 if config.verifMode():
-                    for c in self.couples:
-                        if( self.testExplicationInCouple(explication,c)):
-                            print(self.idRequete,explication,c)
-                            assert(not self.testExplicationInCouple(explication,c))
+                    for c in self.pairs:
+                        if( self.testExplainationInPair(explaination,c)):
+                            print(self.idRequest,explaination,c)
+                            assert(not self.testExplainationInPair(explaination,c))
                 break
         
-    def construireMode(self,constellation):
-        if len(self.couples)==0:
-            self.mode_candidat = None
+    def buildMode(self,constellation):
+        if len(self.pairs)==0:
+            self.candidateMode = None
         else:
-            couple = self.selectionnerCoupleActivites(self.couples,constellation)
-            recompense,scoreTemporel = self.scoreCouple(couple,constellation)
+            couple = self.selectActivityPairs(self.pairs,constellation)
+            utility,temporalUtility = self.scorePair(couple,constellation)
             obs = {couple[0][1]:[couple[0][2],couple[1][2]]}
-            self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-            self.modes[self.mode_candidat.getId()] = self.mode_candidat
+            self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+            self.modes[self.candidateMode.getId()] = self.candidateMode
             self.idMode += 1
-            self.modes_generes += 1
+            self.generatedModesCounter += 1
     
-    def scoreTemporelCouple(self,constellation,couple):
+    def temporalUtilityCouple(self,constellation,couple):
         if config.glob.score_temporel:
             rso = couple[0]
-            t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getDebut() - self.first_date
+            t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getStartDate() - self.firstDate
             start = 3*60*60
-            end = self.last_date - self.first_date
+            end = self.lastDate - self.firstDate
             if t<start:
                 return 1
             else:
@@ -933,184 +926,184 @@ class RequeteStereo(Requete):
         else:
             return 0
         
-    def getModeSuivant(self,explication,constellation):
-        assert(explication!=[])
-        if self.mode_candidat is not None:
-            self.defilerActivites(explication)
-            self.construireMode(constellation)
-        return self.mode_candidat
+    def getNextMode(self,explaination,constellation):
+        assert(explaination!=[])
+        if self.candidateMode is not None:
+            self.i(explaination)
+            self.buildMode(constellation)
+        return self.candidateMode
 
-    def getModeSuivantSansExp(self,constellation):
-        if self.mode_candidat is None:
+    def getNextModeWithoutExp(self,constellation):
+        if self.candidateMode is None:
             return None
-        exp = [self.mode_candidat.getCouples()[0][1],self.mode_candidat.getCouples()[1][1]] # 1er couple (s,o) : obs
-        return self.getModeSuivant(exp,constellation)
+        exp = [self.candidateMode.getPairs()[0][1],self.candidateMode.getPairs()[1][1]] # 1er couple (s,o) : obs
+        return self.getNextMode(exp,constellation)
     
-class RequetePeriodic(Requete):
-    def __init__(self,idRequete,priorite,activites):
-        super().__init__(idRequete,priorite,TYPE_PERIODIC,activites)
-        assert(len(self.couples_satellites_activites)==sum([len(self.liste_activites_par_satellite [s]) for s in self.liste_activites_par_satellite]))
-        seed_option = config.getOptValue("seed")
-        self.generateur_plot = {plot : rd.Random(plot+seed_option) for plot in self.activitesParTimeSlots}
+class PeriodicRequest(Request):
+    def __init__(self,idRequest,priority,activities):
+        super().__init__(idRequest,priority,TYPE_PERIODIC,activities)
+        assert(len(self.pairsSatellitesActivities)==sum([len(self.activitiesListBySatellite [s]) for s in self.activitiesListBySatellite]))
+        configuredSeed = config.getOptValue("seed")
+        self.generatorPlot = {plot : rd.Random(plot+configuredSeed) for plot in self.activitiesByTimeSlots}
 
-    def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-        if not config.getOptValue("dynamic") or self.estActif():
-            external_modes = False
-            external_activites = len(contenu_actuel)>0
+    def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+        if not config.getOptValue("dynamic") or self.isActive():
+            externalModes = False
+            externalActivities = len(currentContent)>0
             # I. créer les obs candidates à l'ajout
-            time_slots_occupes = [self.getTimeSlot(a) for a in contenu_actuel]
-            nouveaux_modes = []
-            activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
-            tri_par_slot = self.trierParTimeSlot(activites_cca)
+            time_slots_occupes = [self.getTimeSlot(a) for a in currentContent]
+            newModes = []
+            actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
+            sortBySlot = self.sortByTimeSlot(actitivitiesCCA)
             for ts in time_slots_occupes:
-                if ts in tri_par_slot:
-                    del tri_par_slot[ts]
-            # II. générer les combinaisons possibles d'ajout d'obs
-            combinaisons = [[]]
-            for ts in tri_par_slot:
-                aux = deepcopy(combinaisons)
-                for a in tri_par_slot[ts]:
+                if ts in sortBySlot:
+                    del sortBySlot[ts]
+            # II. générer les combination possibles d'ajout d'obs
+            combination = [[]]
+            for ts in sortBySlot:
+                aux = deepcopy(combination)
+                for a in sortBySlot[ts]:
                     aux_2 = deepcopy(aux)
                     for i in range(len(aux_2)):
                         aux_2[i].append(a)
-                    combinaisons += aux_2
-            # III. combiner les combinaisons au contenu actuel
-            for combi in combinaisons:
-                liste_nouveau_mode = combi+contenu_actuel
-                if len(combi)>0 or (allow_external_modes and self.acceptable(liste_nouveau_mode,constellation)):
-                    nouveaux_modes.append(self.ajouterMode(constellation,liste_nouveau_mode))
+                    combination += aux_2
+            # III. combiner les combination au contenu actuel
+            for combi in combination:
+                newModes = combi+currentContent
+                if len(combi)>0 or (allowExternalModes and self.acceptable(newModes,constellation)):
+                    newModes.append(self.addMode(constellation,newModes))
                     if len(combi)==0:
-                        external_modes = True
-            return nouveaux_modes,external_modes,external_activites
+                        externalModes = True
+            return newModes,externalModes,externalActivities
         else:
-            return [],False,len(contenu_actuel)>0
+            return [],False,len(currentContent)>0
     
-    def acceptable(self,liste_activites,constellation):
+    def acceptable(self,activitiesList,constellation):
         
-        couples = len(liste_activites)==0 or type(liste_activites[0])==tuple
+        pairs = len(activitiesList)==0 or type(activitiesList[0])==tuple
         
         # vérifier qu'il y a du contenu
-        if len(liste_activites)==0:
+        if len(activitiesList)==0:
             return False
         # vérifier que les activités correspondent bien à la requête
-        if couples:
-            act = self.couples_satellites_activites
+        if pairs:
+            act = self.pairsSatellitesActivities
         else:
-            act = [x[1] for x in self.couples_satellites_activites]
-        if not sum([x in act for x in liste_activites])==len(liste_activites):
+            act = [x[1] for x in self.pairsSatellitesActivities]
+        if not sum([x in act for x in activitiesList])==len(activitiesList):
             return False
         # vérifier l'unicité des time slots
         plots = {}
-        for X in liste_activites:
-            if couples:
+        for X in activitiesList:
+            if pairs:
                 (s,a) = X
             else:
                 a = X
             ts = self.getTimeSlot(a)
             if ts in plots:
                 return False # time slot doublement servi
-            plots[ts] = [rso for rso in self.activitesParTimeSlots[ts] if rso[2]==a][0]
+            plots[ts] = [rso for rso in self.activitiesByTimeSlots[ts] if rso[2]==a][0]
         # vérifier la positivité du score    
-        if self.scoreListeActivites(plots,constellation)[0]<=0:
+        if self.scoreActivityList(plots,constellation)[0]<=0:
             return False
 
         return True
     
     def getTimeSlots(self):
-        return {ts : [(x[1],x[2]) for x in self.activitesParTimeSlots[ts]] for ts in self.activitesParTimeSlots}
+        return {ts : [(x[1],x[2]) for x in self.activitiesByTimeSlots[ts]] for ts in self.activitiesByTimeSlots}
         
-    def defilerActivites(self,explication):
-        assert(explication!=[])
-        for timeSlot in self.activites_candidates:
-            self.activites_candidates[timeSlot] = [x for x in self.activites_candidates[timeSlot] if x[2] not in explication]
-        self.maintenirObs(explication)
+    def shiftActivities(self,explaination):
+        assert(explaination!=[])
+        for timeSlot in self.candidateActivities:
+            self.candidateActivities[timeSlot] = [x for x in self.candidateActivities[timeSlot] if x[2] not in explaination]
+        self.holdObservation(explaination)
         
-    def scoreListeActivites(self,plots,constellation):
+    def scoreActivityList(self,plots,constellation):
         liste_score = [self.scoreObs(plots[timeSlot],constellation,lambda rso : self.scorePlot(constellation,rso,timeSlot)) for timeSlot in plots]
         #print(plots,[x[0] for x in liste_score ])
-        Nplots = len(list(self.activitesParTimeSlots.keys()))
-        max_gap = 0
+        Nplots = len(list(self.activitiesByTimeSlots.keys()))
+        maxGap = 0
         gap = 0
-        for ts in sorted(self.activitesParTimeSlots):
+        for ts in sorted(self.activitiesByTimeSlots):
             if len(plots.get(ts,[]))>0:
-                if gap>max_gap:
-                    max_gap = gap
+                if gap>maxGap:
+                    maxGap = gap
                 gap = 0
             else:
                 gap += 1
         alpha = 0.5
-        score_rec = sum([x[0] for x in liste_score ]) + alpha*(Nplots-max_gap)
+        utility = sum([x[0] for x in liste_score ]) + alpha*(Nplots-maxGap)
         if len(liste_score)>0:
             if config.glob.score_temporel:
-                return (score_rec,np.mean([x[1] for x in liste_score]))
+                return (utility,np.mean([x[1] for x in liste_score]))
             else:
-                return (score_rec,0)
+                return (utility,0)
         else:
             return (0,0)
     
-    def scoreListeObservations(self,listeObs,constellation,timeSlots):
+    def scoreObservationsList(self,obsList,constellation,timeSlots):
         plots = {}
-        for rso in listeObs:
+        for rso in obsList:
             timeSlot = self.getTimeSlot(rso[2])
             plots[timeSlot] = rso
-        return self.scoreListeActivites(plots,constellation)
+        return self.scoreActivityList(plots,constellation)
     
-    def chargerMaintient(self,obs):
-        timeSlot_restant = list(self.activites_candidates.keys())
+    def loadHeldActivities(self,obs):
+        remainingTimeSlot = list(self.candidateActivities.keys())
         listeAct = []
-        for s in self.maintient:
+        for s in self.activitiesHeld:
             obs[s] = []
-            for o in self.maintient[s]:
+            for o in self.activitiesHeld[s]:
                 obs[s].append(o)
-                for timeSlot in self.activites_candidates:
-                    match_obs = [x for x in self.activites_candidates[timeSlot] if x[2]==o]
+                for timeSlot in self.candidateActivities:
+                    match_obs = [x for x in self.candidateActivities[timeSlot] if x[2]==o]
                     if len(match_obs)==1:
-                        timeSlot_restant.remove(timeSlot)
+                        remainingTimeSlot.remove(timeSlot)
                         listeAct.append((timeSlot,match_obs[0]))
                         break
-        return timeSlot_restant,listeAct
+        return remainingTimeSlot,listeAct
 
-    def getBestModeWithoutInactives(self,constellation,inactifs):
-        if not config.getOptValue("dynamic") or self.estActif():
-            rso_liste = []
+    def getBestModeWithoutInactives(self,constellation,inactives):
+        if not config.getOptValue("dynamic") or self.isActive():
+            listRSO = []
             obs = {}
-            liste_obs = []
-            for ts in self.activitesParTimeSlots:
-                activites = [rso for rso in self.activitesParTimeSlots[ts] if rso[2] not in inactifs]
-                cleTemporelle = lambda rso : self.scorePlot(constellation,rso,ts)
-                if len(activites)>0:
-                    rso = self.selectionnerObs(constellation,activites,cleTemporelle)
-                    liste_obs.append(rso[2])
-                    rso_liste.append(rso)
+            observationList = []
+            for ts in self.activitiesByTimeSlots:
+                activities = [rso for rso in self.activitiesByTimeSlots[ts] if rso[2] not in inactives]
+                temporalKey = lambda rso : self.scorePlot(constellation,rso,ts)
+                if len(activities)>0:
+                    rso = self.selectObservation(constellation,activities,temporalKey)
+                    observationList.append(rso[2])
+                    listRSO.append(rso)
                     if rso[1] not in obs:
                         obs[rso[1]] = []
                     obs[rso[1]].append(rso[2])
-            recompense,scoreTemporel = self.scoreListeObservations(rso_liste,constellation,cleTemporelle)
-            if recompense<=0:
+            utility,temporalUtility = self.scoreObservationsList(listRSO,constellation,temporalKey)
+            if utility<=0:
                 return None
-            mode =  Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-            if self.acceptable(mode.getCouples(),constellation):
-                self.mode_a_valider = mode
-                return self.mode_a_valider
+            mode =  Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+            if self.acceptable(mode.getPairs(),constellation):
+                self.modeToValidate = mode
+                return self.modeToValidate
             else:
                 return None
         else:
             return None
                 
-    def construireMode(self,constellation,autoriser_degradation=True):
+    def buildMode(self,constellation,autoriser_degradation=True):
         # si degradation non autorisé et un slot n'a plus d'obs : plus de mode
         if not autoriser_degradation:
-            for timeSlot in self.activites_candidates:
-                if len(self.activites_candidates[timeSlot])==0:
-                    self.mode_candidat = None
+            for timeSlot in self.candidateActivities:
+                if len(self.candidateActivities[timeSlot])==0:
+                    self.candidateMode = None
                     return
         obs = {}
-        timeSlot_restant,listeAct = self.chargerMaintient(obs)
+        remainingTimeSlot,listeAct = self.loadHeldActivities(obs)
         plots = {x[0] : x[1] for x in listeAct}
-        for timeSlot in timeSlot_restant:
-            if len(self.activites_candidates[timeSlot])>0:
-                cleTemporelle = lambda rso : self.scorePlot(constellation,rso,timeSlot)
-                rso = self.selectionnerObs(constellation,self.activites_candidates[timeSlot],cleTemporelle,generateur=self.generateur_plot[timeSlot])
+        for timeSlot in remainingTimeSlot:
+            if len(self.candidateActivities[timeSlot])>0:
+                temporalKey = lambda rso : self.scorePlot(constellation,rso,timeSlot)
+                rso = self.selectObservation(constellation,self.candidateActivities[timeSlot],temporalKey,generator=self.generatorPlot[timeSlot])
                 listeAct.append(rso)
                 plots[timeSlot] = rso
                 s = rso[1]
@@ -1119,18 +1112,18 @@ class RequetePeriodic(Requete):
                 obs[s].append(rso[2])
         # pas d'obs trouvées => mode nul        
         if len(list(obs.keys()))==0:
-            self.mode_candidat = None
+            self.candidateMode = None
             return
         
-        recompense,scoreTemporel = self.scoreListeActivites(plots,constellation)
+        utility,temporalUtility = self.scoreActivityList(plots,constellation)
         self.plots_candidat = plots
-        self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-        self.modes[self.idMode] = self.mode_candidat
+        self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+        self.modes[self.idMode] = self.candidateMode
         self.idMode += 1
-        self.modes_generes += 1
+        self.generatedModesCounter += 1
     
     def scorePlot(self,constellation,rso,timeSlot):
-        t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getDebut()
+        t = constellation.getSatellite(rso[1]).getObservation(rso[2]).getStartDate()
         start = 30*60 + self.plots[timeSlot] # 30 minutes
         end = 90*60 + self.plots[timeSlot] # 1h30 : score nul
         if t<start:
@@ -1138,52 +1131,52 @@ class RequetePeriodic(Requete):
         else:
             return max(1 - (abs(t-start))/(end-start),0)
         
-    def scoreTemporel(self,constellation,plots):
+    def temporalUtility(self,constellation,plots):
         if config.glob.score_temporel:
             return np.mean([self.scorePlot(constellation,plots[timeSlot],timeSlot) for timeSlot in plots])
         else:
             return 0
         
-    def resetModes(self,constellation,conserve_old=True,initFirstMode=True):
+    def resetModes(self,constellation,conserveOld=True,initFirstMode=True):
         self.init = True
-        self.activites_candidates = deepcopy(self.activitesParTimeSlots)
-        self.resetCandidats()
+        self.candidateActivities = deepcopy(self.activitiesByTimeSlots)
+        self.resetCandidateModes()
         self.plots = {}
-        debut = lambda rso: constellation.getSatellite(rso[1]).getObservation(rso[2]).getDebut()
-        fin = lambda rso : constellation.getSatellite(rso[1]).getObservation(rso[2]).getFin()
-        milieu = lambda rso : (debut(rso)+fin(rso))/2
-        for timeSlot in self.activites_candidates:
-            self.plots[timeSlot] = np.mean([milieu(rso) for rso in self.activites_candidates[timeSlot]])
-        if not conserve_old:
+        startDate = lambda rso: constellation.getSatellite(rso[1]).getObservation(rso[2]).getStartDate()
+        endDate = lambda rso : constellation.getSatellite(rso[1]).getObservation(rso[2]).getEndDate()
+        milieu = lambda rso : (startDate(rso)+endDate(rso))/2
+        for timeSlot in self.candidateActivities:
+            self.plots[timeSlot] = np.mean([milieu(rso) for rso in self.candidateActivities[timeSlot]])
+        if not conserveOld:
             self.modes = {}
             self.idMode = 0          
         if initFirstMode:
-            self.construireMode(constellation)
+            self.buildMode(constellation)
        
-    def getKMeilleursModes(self,constellation,k):
+    def getKBestModes(self,constellation,k):
         plots_reduits = {}
         for plot in self.plots:
-            if len(self.activitesParTimeSlots[plot])<=k:
-                plots_reduits[plot] = self.activitesParTimeSlots[plot]
+            if len(self.activitiesByTimeSlots[plot])<=k:
+                plots_reduits[plot] = self.activitiesByTimeSlots[plot]
             else: 
-                plots_reduits[plot] = heapq.nlargest(k, self.activitesParTimeSlots[plot], key=itemgetter(0))
-        combinaisons = [ {} ]
-        liste_modes = []
+                plots_reduits[plot] = heapq.nlargest(k, self.activitiesByTimeSlots[plot], key=itemgetter(0))
+        combination = [ {} ]
+        modesList = []
         for plot in plots_reduits:
-            combinaisons = [dict(chain.from_iterable(d.items() for d in (combi, {plot:x}))) for combi in combinaisons for x in plots_reduits[plot] ]
-        if len(combinaisons)<=k:
-            best_obs = combinaisons
+            combination = [dict(chain.from_iterable(d.items() for d in (combi, {plot:x}))) for combi in combination for x in plots_reduits[plot] ]
+        if len(combination)<=k:
+            best_obs = combination
         else:
-            best_obs = heapq.nlargest(k,combinaisons,key=lambda x : self.scoreListeActivites(x,constellation))
+            best_obs = heapq.nlargest(k,combination,key=lambda x : self.scoreActivityList(x,constellation))
         for comb in best_obs:
             obs = self.rsoToDict([comb[plot] for plot in comb])
-            recompense,scoreTemporel = self.scoreListeActivites(comb,constellation)
-            m = Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)
-            liste_modes.append(m)
+            utility,temporalUtility = self.scoreActivityList(comb,constellation)
+            m = Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)
+            modesList.append(m)
             self.modes[self.idMode] = m
             self.idMode += 1
-            self.modes_generes += 1
-        return liste_modes
+            self.generatedModesCounter += 1
+        return modesList
                                   
     def rsoToDict(self,rso_list):
         obs = {}
@@ -1193,194 +1186,189 @@ class RequetePeriodic(Requete):
             obs[s].append(o)
         return obs
     
-    def getModeSuivant(self,explication,constellation):
-        assert(explication!=[])
-        if self.mode_candidat is not None:
-            self.defilerActivites(explication)
-            self.construireMode(constellation)
-        return self.mode_candidat
+    def getNextMode(self,explaination,constellation):
+        assert(explaination!=[])
+        if self.candidateMode is not None:
+            self.shiftActivities(explaination)
+            self.buildMode(constellation)
+        return self.candidateMode
 
-    def getModeSuivantSansExp(self,constellation):
-        if self.mode_candidat is None:
+    def getNextModeWithoutExp(self,constellation):
+        if self.candidateMode is None:
             return None
-        tmp = sorted([o for (s,o) in self.mode_candidat.getCouples()])
-        id_mode = self.generateur_aleatoire_modes.randint(0,len(tmp)-1)
+        tmp = sorted([o for (s,o) in self.candidateMode.getPairs()])
+        id_mode = self.modesRandomizer.randint(0,len(tmp)-1)
         exp = [tmp[id_mode]] # 1er couple (s,o) : obs
-        return self.getModeSuivant(exp,constellation)
+        return self.getNextMode(exp,constellation)
     
-class RequeteSystematic(Requete):
-    def __init__(self,idRequete,priorite,activites):
-        super().__init__(idRequete,priorite,TYPE_SYSTEMATIC,activites)
-        assert(len(self.couples_satellites_activites)==sum([len(self.liste_activites_par_satellite [s]) for s in self.liste_activites_par_satellite]))
+class SystematicRequest(Request):
+    def __init__(self,idRequest,priority,activities):
+        super().__init__(idRequest,priority,TYPE_SYSTEMATIC,activities)
+        assert(len(self.pairsSatellitesActivities)==sum([len(self.activitiesListBySatellite [s]) for s in self.activitiesListBySatellite]))
 
-    def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-        if not config.getOptValue("dynamic") or self.estActif():
-            external_modes = False
-            external_activites = len(contenu_actuel)>0
-            if len(contenu_actuel)>0:
-                sat = constellation.getSatelliteActivite(contenu_actuel[0])
+    def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+        if not config.getOptValue("dynamic") or self.isActive():
+            externalModes = False
+            externalActivities = len(currentContent)>0
+            if len(currentContent)>0:
+                sat = constellation.getSatelliteActivity(currentContent[0])
                 if config.getOptValue("verif"):
-                    constellation.getSatelliteActivite(contenu_actuel[0]) == sat
+                    constellation.getSatelliteActivity(currentContent[0]) == sat
                 possible_sat = [sat]
             else:
-                possible_sat = list(self.liste_activites_par_satellite.keys())
-            nouveaux_modes = []
-            activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
+                possible_sat = list(self.activitiesListBySatellite.keys())
+            newModes = []
+            actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
             
             for s in possible_sat:
-                activites_candidates = [x for x in self.liste_activites_par_satellite [s] if x in activites_cca]
-                combinaisons = []
-                for taille in range(len(activites_candidates)+1):
-                    combinaisons += list(map(list,itertools.combinations(activites_candidates,taille)))
-                for combi in combinaisons:
-                    liste_nouveau_mode = combi+contenu_actuel
-                    if len(combi)>0 or (allow_external_modes and self.acceptable(liste_nouveau_mode,constellation)):
-                        nouveaux_modes.append(self.ajouterMode(constellation,liste_nouveau_mode))
-                    if len(combi)==0 and self.acceptable(liste_nouveau_mode,constellation):
-                        external_modes = True
-            return nouveaux_modes,external_modes,external_activites
+                candidateActivities = [x for x in self.activitiesListBySatellite [s] if x in actitivitiesCCA]
+                combination = []
+                for size in range(len(candidateActivities)+1):
+                    combination += list(map(list,itertools.combinations(candidateActivities,taille)))
+                for combi in combination:
+                    newModes = combi+currentContent
+                    if len(combi)>0 or (allowExternalModes and self.acceptable(newModes,constellation)):
+                        newModes.append(self.addMode(constellation,newModes))
+                    if len(combi)==0 and self.acceptable(newModes,constellation):
+                        externalModes = True
+            return newModes,externalModes,externalActivities
         else:
-            return [],False,len(contenu_actuel)>0
+            return [],False,len(currentContent)>0
         
-    def acceptable(self,liste_activites,constellation):
-        if len(liste_activites)==0:
+    def acceptable(self,activitiesList,constellation):
+        if len(activitiesList)==0:
             return False
-        couples = len(liste_activites)==0 or type(liste_activites[0])==tuple
-        if couples:        
-            act = self.couples_satellites_activites
+        pairs = len(activitiesList)==0 or type(activitiesList[0])==tuple
+        if pairs:        
+            act = self.pairsSatellitesActivities
         else:
-            act = [x[1] for x in self.couples_satellites_activites]
+            act = [x[1] for x in self.pairsSatellitesActivities]
                 
-        if not sum([x in act for x in liste_activites])==len(liste_activites):
+        if not sum([x in act for x in activitiesList])==len(activitiesList):
             return False
-        if couples:
-            sat = liste_activites[0][0]
+        if pairs:
+            sat = activitiesList[0][0]
         else:
-            sat = constellation.getSatelliteActivite(liste_activites[0])
-        if couples:
-            for s,a in liste_activites:
+            sat = constellation.getSatelliteActivity(activitiesList[0])
+        if pairs:
+            for s,a in activitiesList:
                 if sat!=s:
                     return False
         else:
-            for a in liste_activites:
-                s = constellation.getSatelliteActivite(a)
+            for a in activitiesList:
+                s = constellation.getSatelliteActivity(a)
                 if sat!=s:
                     return False
         return True
             
-    def resetModes(self,constellation,conserve_old=True,initFirstMode=True):
+    def resetModes(self,constellation,conserveOld=True,initFirstMode=True):
         self.init = True
         self.observations_candidates = {}
-        for (r,s,o) in self.activitesParTimeSlots[0]:
+        for (r,s,o) in self.activitiesByTimeSlots[0]:
             if s not in self.observations_candidates:
                 self.observations_candidates[s] = {}
             self.observations_candidates[s][o] = r
-        self.resetCandidats()
-        self.dureeMin = min([constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuree() for rso in self.activitesParTimeSlots[0]]) 
-        self.dureeMax = max([constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuree() for rso in self.activitesParTimeSlots[0]])
-        if self.dureeMax==self.dureeMin:
+        self.resetCandidateModes()
+        self.minDuration = min([constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuration() for rso in self.activitiesByTimeSlots[0]]) 
+        self.maxDuration = max([constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuration() for rso in self.activitiesByTimeSlots[0]])
+        if self.maxDuration==self.minDuration:
             self.delta = 1
         else:
-            self.delta = self.dureeMax - self.dureeMin
-        if not conserve_old:
+            self.delta = self.maxDuration - self.minDuration
+        if not conserveOld:
             self.modes = {}
             self.idMode = 0          
         if initFirstMode:
-            self.construireMode(constellation)
-        #print("reset")
-        #print(self.idRequete,self.modes[0].getCouples(),[len(self.observations_candidates[t]) for t in self.observations_candidates])
+            self.buildMode(constellation)
     
-    def getKMeilleursModes(self,constellation,k):
-        min_longueur = {s:max(1,len(self.liste_activites_par_satellite [s])-k) for s in self.liste_activites_par_satellite}
-        comb = {s: [list(l) for n in range(min_longueur[s],len(self.liste_activites_par_satellite [s])+1) for l in combinations([rso for rso in self.activitesParTimeSlots[0] if rso[1]==s],n)] for s in self.liste_activites_par_satellite}
+    def getKBestModes(self,constellation,k):
+        min_longueur = {s:max(1,len(self.activitiesListBySatellite [s])-k) for s in self.activitiesListBySatellite}
+        comb = {s: [list(l) for n in range(min_longueur[s],len(self.activitiesListBySatellite [s])+1) for l in combinations([rso for rso in self.activitiesByTimeSlots[0] if rso[1]==s],n)] for s in self.activitiesListBySatellite}
         #print(comb)
         flatten = []
         for s in comb:
             for x in comb[s]:
-                elmt = (x,self.scoreListeObservations(x,constellation))
+                elmt = (x,self.scoreObservationsList(x,constellation))
                 flatten.append(elmt)
         #print(flatten)
-        liste_obs = [x[0] for x in heapq.nlargest(k, flatten, key=itemgetter(1))]
-        liste_modes = []
-        for l in liste_obs:
+        observationList = [x[0] for x in heapq.nlargest(k, flatten, key=itemgetter(1))]
+        modesList = []
+        for l in observationList:
             obs = {}
             for rso in l:
                 if rso[1] not in obs:
                     obs[rso[1]] = []
                 obs[rso[1]].append(rso[2])
-            recompense,score_temporel = self.scoreListeObservations(l,constellation)
-            m = Mode(self.idRequete,self.idMode,recompense,obs,score_temporel)
+            utility,score_temporel = self.scoreObservationsList(l,constellation)
+            m = Mode(self.idRequest,self.idMode,utility,obs,score_temporel)
             self.modes[self.idMode] = m
-            liste_modes.append(m)
+            modesList.append(m)
             self.idMode += 1
-            self.modes_generes += 1
-        return liste_modes
+            self.generatedModesCounter += 1
+        return modesList
                                
-    def scoreListeObservations(self,listeObs,constellation,timeSlots=None):
-        cleTemporelle = lambda rso : (constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuree() - self.dureeMin)/self.delta
-        liste_score = [self.scoreObs(rso,constellation,cleTemporelle) for rso in listeObs]
+    def scoreObservationsList(self,obsList,constellation,timeSlots=None):
+        temporalKey = lambda rso : (constellation.getSatellite(rso[1]).getObservation(rso[2]).getDuration() - self.minDuration)/self.delta
+        liste_score = [self.scoreObs(rso,constellation,temporalKey) for rso in obsList]
         return (sum([x[0] for x in liste_score]),np.mean([x[1] for x in liste_score]))
     
-    def construireMode(self,constellation):
+    def buildMode(self,constellation):
         if self.observations_candidates=={}:
-            s_max = None
+            sMax = None
         else:
-            r_max = max([self.scoreListeObservations([(self.observations_candidates[s][o],s,o) for o in self.observations_candidates[s]],constellation) for s in self.observations_candidates])
-            #if self.mode_candidat is not None and r_max==self.mode_candidat.getRecompense():
-            #    return # on s'embete pas a changer de satellite si les autres ne sont pas strictement mieux
-            liste_sat_max = [s for s in self.observations_candidates if self.scoreListeObservations([(self.observations_candidates[s][o],s,o) for o in self.observations_candidates[s]],constellation) == r_max]
-            #id_sat = self.generateur_aleatoire_modes.randint(0,len(liste_sat_max)-1)
-            s_max = min(liste_sat_max) # liste_sat_max[id_sat]
+            rMax = max([self.scoreObservationsList([(self.observations_candidates[s][o],s,o) for o in self.observations_candidates[s]],constellation) for s in self.observations_candidates])
+            listSatMax = [s for s in self.observations_candidates if self.scoreObservationsList([(self.observations_candidates[s][o],s,o) for o in self.observations_candidates[s]],constellation) == rMax]
+            sMax = min(listSatMax) # listSatMax[id_sat]
 
-        if s_max is not None:
-            recompense,score_temporel = r_max
-            obs = {s_max:list(self.observations_candidates[s_max].keys())}
-            self.mode_candidat = Mode(self.idRequete,self.idMode,recompense,obs,score_temporel)
-            self.modes[self.mode_candidat.getId()] = self.mode_candidat
+        if sMax is not None:
+            utility,score_temporel = rMax
+            obs = {sMax:list(self.observations_candidates[sMax].keys())}
+            self.candidateMode = Mode(self.idRequest,self.idMode,utility,obs,score_temporel)
+            self.modes[self.candidateMode.getId()] = self.candidateMode
             self.idMode += 1
-            self.modes_generes += 1
+            self.generatedModesCounter += 1
         else:
-            self.mode_candidat = None
+            self.candidateMode = None
             
-    def getObsBySatellites(self,inactifs):
-        obs_by_sat = {}
-        for ts in self.activitesParTimeSlots:
-            for (r,s,a) in self.activitesParTimeSlots[ts]:
-                if a not in inactifs:
-                    if s not in obs_by_sat:
-                        obs_by_sat[s] = []
-                    obs_by_sat[s].append((r,s,a))
-        return obs_by_sat
+    def getObsBySatellites(self,inactives):
+        observationsBySat = {}
+        for ts in self.activitiesByTimeSlots:
+            for (r,s,a) in self.activitiesByTimeSlots[ts]:
+                if a not in inactives:
+                    if s not in observationsBySat:
+                        observationsBySat[s] = []
+                    observationsBySat[s].append((r,s,a))
+        return observationsBySat
         
-    def getBestModeWithoutInactives(self,constellation,inactifs):
-        if not config.getOptValue("dynamic") or self.estActif():
-            cleTemporelle = lambda rso : self.scoreTemporel(constellation,rso)
-            rso_liste = []
+    def getBestModeWithoutInactives(self,constellation,inactives):
+        if not config.getOptValue("dynamic") or self.isActive():
+            temporalKey = lambda rso : self.temporalUtility(constellation,rso)
+            listRSO = []
             obs = {}
-            liste_obs = []
-            rso_by_sat = self.getObsBySatellites(inactifs)
-            if rso_by_sat=={}:
-                self.mode_a_valider = None
+            observationList = []
+            rsoBySat = self.getObsBySatellites(inactives)
+            if rsoBySat=={}:
+                self.modeToValidate = None
                 return None
-            best_sat = None
-            score_sat = 0
-            for sat in rso_by_sat:
-                recompense,scoreTemporel = self.scoreListeObservations(rso_by_sat[sat],constellation,cleTemporelle)
-                if recompense>score_sat:
-                    score_sat = recompense
-                    best_sat = sat
+            bestSat = None
+            scoreSat = 0
+            for sat in rsoBySat:
+                utility,temporalUtility = self.scoreObservationsList(rsoBySat[sat],constellation,temporalKey)
+                if utility>scoreSat:
+                    scoreSat = utility
+                    bestSat = sat
             
-            obs = {best_sat:[rso[2] for rso in rso_by_sat[best_sat]]}
-            mode =  Mode(self.idRequete,self.idMode,recompense,obs,scoreTemporel)            
+            obs = {bestSat:[rso[2] for rso in rsoBySat[bestSat]]}
+            mode =  Mode(self.idRequest,self.idMode,utility,obs,temporalUtility)            
             if config.getOptValue("verif"):
-                assert(self.acceptable(mode.getCouples(),constellation))
-            self.mode_a_valider = mode
-            return self.mode_a_valider
+                assert(self.acceptable(mode.getPairs(),constellation))
+            self.modeToValidate = mode
+            return self.modeToValidate
         else:
             return None
         
-    def defilerActivites(self,explication):
-        for a in explication:
+    def shiftActivities(self,explaination):
+        for a in explaination:
             for s in self.observations_candidates:
                 if a in self.observations_candidates[s]:
                     del self.observations_candidates[s][a]
@@ -1390,278 +1378,274 @@ class RequeteSystematic(Requete):
             if self.observations_candidates[s] == {}:
                 del self.observations_candidates[s]
 
-    def getModeSuivantSansExp(self,constellation):
-        if self.mode_candidat is None:
+    def getNextModeWithoutExp(self,constellation):
+        if self.candidateMode is None:
             return None
-        tmp = sorted([o for (s,o) in self.mode_candidat.getCouples()])
-        id_mode = self.generateur_aleatoire_modes.randint(0,len(tmp)-1)
+        tmp = sorted([o for (s,o) in self.candidateMode.getPairs()])
+        id_mode = self.modesRandomizer.randint(0,len(tmp)-1)
         exp = [tmp[id_mode]] # 1er couple (s,o) : obs
-        return self.getModeSuivant(exp,constellation)
+        return self.getNextMode(exp,constellation)
     
-    def toutesExplicationsEnRetard(self,explication):
-        return sum([a not in [x[1] for x in self.mode_candidat.getCouples()] for a in explication]) == len(explication)
+    def testAllExplainationsAreLate(self,explaination):
+        return sum([a not in [x[1] for x in self.candidateMode.getPairs()] for a in explaination]) == len(explaination)
         
-    def getModeSuivant(self,explication,constellation):
-        assert(explication!=[])
-        if self.mode_candidat is not None:
-            en_retard = self.toutesExplicationsEnRetard(explication)
-            self.defilerActivites(explication)
-            if not en_retard: # si l'explication provient d'un ancien mode inutile de changer encore de satellite
-                self.construireMode(constellation)
-        return self.mode_candidat
+    def getNextMode(self,explaination,constellation):
+        assert(explaination!=[])
+        if self.candidateMode is not None:
+            isLate = self.testAllExplainationsAreLate(explaination)
+            self.shiftActivities(explaination)
+            if not isLate: # si l'explication provient d'un ancien mode inutile de changer encore de satellite
+                self.buildMode(constellation)
+        return self.candidateMode
     
-class RequeteVidage(Requete):
-    def __init__(self,idRequete,priorite,vidages):
-        self.liste_activites_par_satellite = vidages
-        self.couples_satellites_activites = []
+class DownloadRequest(Request):
+    def __init__(self,idRequest,priority,downloads):
+        self.activitiesListBySatellite = downloads
+        self.pairsSatellitesActivities = []
         rso = []
-        for s in vidages:
-            for v in vidages[s]:
-                self.couples_satellites_activites.append((s,v))
+        for s in downloads:
+            for v in downloads[s]:
+                self.pairsSatellitesActivities.append((s,v))
                 rso.append((0,s,v))
-        assert(len(self.couples_satellites_activites)==sum([len(self.liste_activites_par_satellite [s]) for s in self.liste_activites_par_satellite]))
-        super().__init__(idRequete,priorite,TYPE_VIDAGE,{0:rso})
-        self.type_requete = TYPE_VIDAGE
-        self.mode_candidat = Mode(idRequete,0,0,self.liste_activites_par_satellite,0)
-        self.modes = {0:self.mode_candidat}
+        assert(len(self.pairsSatellitesActivities)==sum([len(self.activitiesListBySatellite [s]) for s in self.activitiesListBySatellite]))
+        super().__init__(idRequest,priority,TYPE_DOWNLOAD,{0:rso})
+        self.requestType = TYPE_DOWNLOAD
+        self.candidateMode = Mode(idRequest,0,0,self.activitiesListBySatellite,0)
+        self.modes = {0:self.candidateMode}
         self.idMode = 0
     
     def acceptable(self,contenu,constellation):
-        for (s,a) in self.couples_satellites_activites:
+        for (s,a) in self.pairsSatellitesActivities:
             if (s,a) not in contenu:
                 return False
         return True
         
-    def genererModesPresentsCCA(self,grapheDep,constellation,contenu_actuel,liste_cca_a_explorer,allow_external_modes=True):
-        assert(not config.getOptValue("dynamic") or self.estActif())
+    def generateModesInCCA(self,graphDep,constellation,currentContent,listCCAToExplore,allowExternalModes=True):
+        assert(not config.getOptValue("dynamic") or self.isActive())
         if config.getOptValue("verif"):
-            activites_cca = self.getActivitesPresentesCCA(grapheDep, liste_cca_a_explorer)
-            liste_nouveau_mode = activites_cca+contenu_actuel
-            assert(sorted(liste_nouveau_mode) == sorted([x[1] for x in self.modes[0].getCouples()]))
-        return [self.modes[0]],False,len(contenu_actuel)>0
+            actitivitiesCCA = self.getActivitiesInCCA(graphDep, listCCAToExplore)
+            newModes = actitivitiesCCA+currentContent
+            assert(sorted(newModes) == sorted([x[1] for x in self.modes[0].getPairs()]))
+        return [self.modes[0]],False,len(currentContent)>0
         
-    def scoreListeObservations(self,listeObs,constellation,timeSlots):
+    def scoreObservationsList(self,obsList,constellation,timeSlots):
         return (0,0)
     
-    def getBestModeWithoutInactives(self,constellation,inactifs):
-        assert(self.estActif())
-        if len(inactifs)>0:
-            print([constellation.getRequete(a) for a in inactifs])
-        assert(len(inactifs)==0)
-        self.mode_a_valider = self.mode_candidat
-        return self.mode_candidat
+    def getBestModeWithoutInactives(self,constellation,inactives):
+        assert(self.isActive())
+        if len(inactives)>0:
+            print([constellation.getRequest(a) for a in inactives])
+        assert(len(inactives)==0)
+        self.modeToValidate = self.candidateMode
+        return self.candidateMode
 
-    def getModeSuivantSansExp(self,constellation):
-        if self.mode_candidat is None:
+    def getNextModeWithoutExp(self,constellation):
+        if self.candidateMode is None:
             return None
         exp = [] # 1er couple (s,o) : obs
-        res =  self.getModeSuivant(exp,constellation)
-        self.mode_candidat = res
+        res =  self.getNextMode(exp,constellation)
+        self.candidateMode = res
         return res
     
-    def getKMeilleursModes(self,constellation,k):
+    def getKBestModes(self,constellation,k):
         exp = [] # 1er couple (s,o) : obs
-        res =  self.getModeSuivant(exp,constellation)
-        self.mode_candidat = res
+        res =  self.getNextMode(exp,constellation)
+        self.candidateMode = res
         return [res]
     
-    def resetModes(self,constellation,conserve_old=True,initFirstMode=True):
+    def resetModes(self,constellation,conserveOld=True,initFirstMode=True):
         self.init = True
         pass
                   
-    def getModeSuivant(self,explication,constellation):
-        mode = deepcopy(self.mode_candidat)
+    def getNextMode(self,explaination,constellation):
+        mode = deepcopy(self.candidateMode)
         self.idMode += 1
-        self.modes_generes += 1
+        self.generatedModesCounterCounter += 1
         mode.idMode = self.idMode
         retrait = []
-        for (s,o) in mode.couples:
-            if o in explication:
+        for (s,o) in mode.pairs:
+            if o in explaination:
                 retrait.append((s,o))
         for (s,o) in retrait:
-            mode.couples.remove((s,o))
+            mode.pairs.remove((s,o))
             del mode.observations[s][o]
-        self.mode_candidat = mode
+        self.candidateMode = mode
         self.modes[1] = mode
         return mode
     
-class Activite:
-        def __init__(self,id_act,satid,debut,fin,longitude,latitude,altitude):
-            self.id = id_act
-            self.satId = satid
-            self.debut = debut
-            self.fin = fin
-            self.longitude = longitude
-            self.latitude = latitude
-            self.altitude = altitude
+class Activity:
+    def __init__(self,idActivity,satId,startDate,endDate,longitude,latitude,altitude):
+        self.id = idActivity
+        self.satId = satId
+        self.startDate = startDate
+        self.endDate = endDate
+        self.longitude = longitude
+        self.latitude = latitude
+        self.altitude = altitude
 
-        def getId(self):
-            return self.id
+    def getId(self):
+        return self.id
 
-        def getDebut(self):
-            return self.debut
+    def getStartDate(self):
+        return self.startDate
 
-        def getFin(self):
-            return self.fin
+    def getEndDate(self):
+        return self.endDate
 
-        def getSat(self):
-            return self.satId
+    def getSat(self):
+        return self.satId
 
-        def getLongitude(self):
-            return self.longitude
+    def getLongitude(self):
+        return self.longitude
 
-        def getLatitude(self):
-            return self.latitude
+    def getLatitude(self):
+        return self.latitude
 
-        def getAltitude(self):
-            return self.altitude
+    def getAltitude(self):
+        return self.altitude
 
-        def getCoordonnees(self):
-            return ( self.longitude,self.latitude,self.altitude)
+    def getCoordinates(self):
+        return ( self.longitude,self.latitude,self.altitude)
 
-        def estDependant(self,constellation,s,a):
-            if s!=self.satId:
-                return False
-            autre = constellation.satellites[self.satId].getActivite(a)
-            left = autre.getDebut() <= self.getDebut() and autre.getFin() + constellation.satellites[s].getTransition(self.id,a) <= self.getDebut()
-            right = self.getDebut() <= autre.getDebut() and self.getFin() + constellation.satellites[s].getTransition(a,self.id) <= autre.getDebut()
-            return not(left or right)
+    def isDependant(self,constellation,s,a):
+        if s!=self.satId:
+            return False
+        other = constellation.satellites[self.satId].getActivity(a)
+        left = other.getStartDate() <= self.getStartDate() and other.getEndDate() + constellation.satellites[s].getTransition(self.id,a) <= self.getStartDate()
+        right = self.getStartDate() <= other.getStartDate() and self.getEndDate() + constellation.satellites[s].getTransition(a,self.id) <= other.getStartDate()
+        return not(left or right)
+    
+    def distance(self,s,a2,constellation):
+        coords2 = constellation.getSatellite(s).getActivity(a2).getCoordinates()
+        return sqrt(sum([(self.getCoordonnes()[i]-coords2[i])**2 for i in range(3)]))
+    
+    def dependantTauMax(self,s,a,constellation,tau_max):
+        other = constellation.satellites[s].getActivity(a)
+        left = other.getStartDate() <= self.getStartDate() and other.getEndDate() + tau_max <= self.getStartDate()
+        right = self.getStartDate() <= other.getStartDate() and self.getEndDate() + tau_max <= other.getStartDate()
+        return not(left or right)
         
-        def distance(self,s,a2,constellation):
-            coords2 = constellation.getSatellite(s).getActivite(a2).getCoordonnees()
-            return sqrt(sum([(self.getCoordonnes()[i]-coords2[i])**2 for i in range(3)]))
-        
-        def dependantTauMax(self,s,a,constellation,tau_max):
-            autre = constellation.satellites[s].getActivite(a)
-            left = autre.getDebut() <= self.getDebut() and autre.getFin() + tau_max <= self.getDebut()
-            right = self.getDebut() <= autre.getDebut() and self.getFin() + tau_max <= autre.getDebut()
-            return not(left or right)
-        
-class Observation(Activite):
-        def __init__(self,idObs,idSat,debut,fin,dureeObs,x,y,z,score,idRequete):
-            super().__init__(idObs,idSat,debut,fin,x,y,z)
-            self.duree = dureeObs
-            #self.dureeTelechargement = dureeDl
-            #self.memoire = memoire
-            self.scoringObs(score)
-            #printMaster(idObs,score,self.score)
-            self.idRequete = idRequete
-        
-        def scoringObs(self,score):
-            if score > 1:
-                raise ValueError("Score de l'observation > 1",score)
-            #bounds = [x/10 for x in range(5,11)]
-            values = [(0.5,0.05),(0.6,0.1),(0.7,0.4),(0.8,0.7),(0.9,0.95),(1,1)]
-            values = sorted(values,key=itemgetter(0))
-            for (bound,value) in values:
-                if score <= bound:
-                    self.score = value
-                    return
+class Observation(Activity):
+    def __init__(self,idObs,idSat,startDate,endDate,obsDuration,x,y,z,score,idRequest):
+        super().__init__(idObs,idSat,startDate,endDate,x,y,z)
+        self.duration = obsDuration
+        self.scoringObs(score)
+        self.idRequest = idRequest
+    
+    def scoringObs(self,score):
+        if score > 1:
             raise ValueError("Score de l'observation > 1",score)
-            
-        def getRequete(self):
-            return self.idRequete
-            
-        def getScore(self):
-            return self.score
+        #bounds = [x/10 for x in range(5,11)]
+        values = [(0.5,0.05),(0.6,0.1),(0.7,0.4),(0.8,0.7),(0.9,0.95),(1,1)]
+        values = sorted(values,key=itemgetter(0))
+        for (bound,value) in values:
+            if score <= bound:
+                self.score = value
+                return
+        raise ValueError("Score de l'observation > 1",score)
         
-        def getScorePlan(self,composantes,solCCAs):
-            s = self.getSat()
-            cca = composante.getActiviteCCA(self.getIdentifiant())
-            charge = solCCAs[s][cca].scoreCharge()
-            return (self.score,-charge)
-            
-        def getDuree(self):
-            return self.duree
+    def getRequest(self):
+        return self.idRequest
+        
+    def getScore(self):
+        return self.score
+    
+    def getScorePlan(self,composantes,solCCAs):
+        s = self.getSat()
+        cca = composante.getActivityCCA(self.getIdentifiant())
+        charge = solCCAs[s][cca].scoreCharge()
+        return (self.score,-charge)
+        
+    def getDuration(self):
+        return self.duration
 
-        def getCoordonnees(self):
-            return (self.getLongitude(),self.getLatitude(),self.getAltitude())
-        
-        def __str__(self):
-            return " " + Fore.BLUE + "[Observation, début : " + str(self.debut) + ", id : " + str(self.id) + ", fin : " + str(self.fin) + ", durée : " + str(self.duree) + ", score : " +str(self.score) +"]" +Style.RESET_ALL
+    def getCoordinates(self):
+        return (self.getLongitude(),self.getLatitude(),self.getAltitude())
+    
+    def __str__(self):
+        return " " + Fore.BLUE + "[Observation, start : " + str(self.startDate) + ", id : " + str(self.id) + ", end : " + str(self.endDate) + ", duration : " + str(self.duration) + ", score : " +str(self.score) +"]" +Style.RESET_ALL
 
-class Vidage(Activite):
-        # id,satId,windowStart,windowEnd,longitude,latitude,altitude
-        def __init__(self,data):
-            super().__init__(int(data[0]),int(data[1]),float(data[2]),float(data[3]), float(data[4]),float(data[5]),float(data[6]))
-            #super().__init__(int(data[0])+config.donnees.no,int(data[1]),float(data[2]),float(data[3]), float(data[4]),float(data[5]),float(data[6]))
-            
-        def __str__(self):
-            return " " + Fore.GREEN + "[Vidage, début : "+str(self.debut)+", id : "+str(self.id)+", fin : "+str(self.fin) + ", durée : " + str(self.getDuree()) +" ]" + Style.RESET_ALL
+class Download(Activity):
+    def __init__(self,data):
+        super().__init__(int(data[0]),int(data[1]),float(data[2]),float(data[3]), float(data[4]),float(data[5]),float(data[6]))
+        #super().__init__(int(data[0])+config.donnees.no,int(data[1]),float(data[2]),float(data[3]), float(data[4]),float(data[5]),float(data[6]))
         
-        def getDuree(self):
-            fenetre = self.fin - self.debut
-            return min(config.glob.allocation_vidage,0.95*fenetre)
-        
-        def getRequete(self):
-            return -1
-        
-        def getScore(self):
-            return 0
+    def __str__(self):
+        return " " + Fore.GREEN + "[Download, start : "+str(self.startDate)+", id : "+str(self.id)+", end : "+str(self.endDate) + ", duration : " + str(self.getDuration()) +" ]" + Style.RESET_ALL
+    
+    def getDuration(self):
+        fenetre = self.endDate - self.startDate
+        return min(config.glob.allocation_vidage,0.95*fenetre)
+    
+    def getRequest(self):
+        return -1
+    
+    def getScore(self):
+        return 0
             
 class Satellite:
-        def __init__(self,identifiant,obs,vid):
-            self.obs = obs
-            self.id = identifiant
-            self.vid = vid
+    def __init__(self,identifiant,obs,vid):
+        self.obs = obs
+        self.id = identifiant
+        self.downloads = vid
 
-        def supprimerActivite(self,a):
-            if self.estVidage(a):
-                del self.vid[a]
-            if self.estObservation(a):
-                del self.obs[p]
+    def deleteActivity(self,a):
+        if self.isDownload(a):
+            del self.downloads[a]
+        if self.isObservation(a):
+            del self.obs[p]
 
-        def estVidage(self,p):
-            #return p>=config.donnees.no and p<config.donnees.no+config.donnees.nv
-            return p in self.vid    
-        
-        def estObservation(self,p):
-            #return p>=0 and p<config.donnees.no
-            return p in self.obs
+    def isDownload(self,p):
+        #return p>=config.donnees.no and p<config.donnees.no+config.donnees.nv
+        return p in self.downloads    
+    
+    def isObservation(self,p):
+        #return p>=0 and p<config.donnees.no
+        return p in self.obs
 
-        def getObservations(self):
-            return self.obs
+    def getObservations(self):
+        return self.obs
 
-        def getObservation(self,p):
-            return self.obs[p]
+    def getObservation(self,p):
+        return self.obs[p]
 
-        def getId(self):
-            return self.id
+    def getId(self):
+        return self.id
 
-        def getVidage(self,p):
-            return self.vid[p]
+    def getDownload(self,p):
+        return self.downloads[p]
 
-        def getActivites(self):
-            r = dict(self.obs)
-            r.update(self.vid)
-            return r
+    def getActivities(self):
+        r = dict(self.obs)
+        r.update(self.downloads)
+        return r
 
-        def getActivite(self,a):
-            if self.estObservation(a):
-                return self.obs[a]
-            else:
-                return self.vid[a]
+    def getActivity(self,a):
+        if self.isObservation(a):
+            return self.obs[a]
+        else:
+            return self.downloads[a]
 
-        def __str__(self):
-            s = "IDENTIFIANT : " + str(self.id) + '\n'
-            s += "ACTIVITES : \n"
-            for o in self.obs :
-                s += "\t" + str(self.obs[o]) + "\n"
-            return s
+    def __str__(self):
+        s = "IDENTIFIER : " + str(self.id) + '\n'
+        s += "ACTIVITIES : \n"
+        for o in self.obs :
+            s += "\t" + str(self.obs[o]) + "\n"
+        return s
 
-        def getVidages(self):
-            return self.vid
-        
-        def getTransition(self,a1,a2,modeleDeTransition):
-            assert(not modeleDeTransition.estTimeDependent())
-            res = modeleDeTransition.getTransition(self,a1,a2,config.glob.digits)
-            return res
-        
-        def getTransitionTimeDependent(self,a1,a2,start_maneuvering,modeleDeTransition):
-            if modeleDeTransition.estTimeDependent():
-                return modeleDeTransition.getTransition(a1,a2,start_maneuvering)
-            else:
-                return modeleDeTransition.getTransition(self,a1,a2)
+    def getDownloads(self):
+        return self.downloads
+    
+    def getTransition(self,a1,a2,modeleDeTransition):
+        assert(not modeleDeTransition.estTimeDependent())
+        res = modeleDeTransition.getTransition(self,a1,a2,config.glob.digits)
+        return res
+    
+    def getTransitionTimeDependent(self,a1,a2,startManeuveringDate,modeleDeTransition):
+        if modeleDeTransition.estTimeDependent():
+            return modeleDeTransition.getTransition(a1,a2,startManeuveringDate)
+        else:
+            return modeleDeTransition.getTransition(self,a1,a2)
 
 class Constellation:
 
@@ -1670,28 +1654,28 @@ class Constellation:
                 Initialisation de la constellation
         =========================================================
     """            
-    def getRequeteActivite(self,a):
-        s = self.mapping_sat[a]
-        return self.dependances[s][a]
+    def getRequestActivity(self,a):
+        s = self.mappingSat[a]
+        return self.dependencies[s][a]
     
-    def initDependancesActivites(self):
+    def initDependancesActivities(self):
         # mapping dep[s][a] => (requete,mode) qui contiennent a
-        self.dependances = {s : {} for s in self.satellites}
-        for r in self.getToutesRequetes():
-            for s in self.getRequete(r).getActivites():
+        self.dependencies = {s : {} for s in self.satellites}
+        for r in self.getAllRequests():
+            for s in self.getRequest(r).getActivities():
                 if s not in self.satellites:
-                    die(s,self.satellites.keys(),self.getRequete(r).getActivites().keys())
-                for a in  self.getRequete(r).getActivitesSatellite(s):
-                    self.dependances[s][a] = r
+                    die(s,self.satellites.keys(),self.getRequest(r).getActivities().keys())
+                for a in  self.getRequest(r).getActivitiesBySatellite(s):
+                    self.dependencies[s][a] = r
                 
     def initTimeData(self):
-        self.tmin = min([self.satellites[s].getActivite(p).getDebut() for s in self.satellites for p in self.satellites[s].getActivites()])
-        self.tmax = max([self.satellites[s].getActivite(p).getFin() for s in self.satellites for p in self.satellites[s].getActivites()])
-        mins = {s : min([self.satellites[s].getObservation(p).getDebut() for p in self.satellites[s].getObservations()]) for s in self.satellites}
-        maxs = {s : max([self.satellites[s].getObservation(p).getFin() for p in self.satellites[s].getObservations()]) for s in self.satellites}
+        self.tmin = min([self.satellites[s].getActivity(p).getStartDate() for s in self.satellites for p in self.satellites[s].getActivities()])
+        self.tmax = max([self.satellites[s].getActivity(p).getEndDate() for s in self.satellites for p in self.satellites[s].getActivities()])
+        mins = {s : min([self.satellites[s].getObservation(p).getStartDate() for p in self.satellites[s].getObservations()]) for s in self.satellites}
+        maxs = {s : max([self.satellites[s].getObservation(p).getEndDate() for p in self.satellites[s].getObservations()]) for s in self.satellites}
         self.horizonObs = { s : (mins[s],maxs[s]) for s in mins}
-        mins = {s : min([self.satellites[s].getVidage(p).getDebut() for p in self.satellites[s].getVidages()]) for s in self.satellites}
-        maxs = {s : max([self.satellites[s].getVidage(p).getFin() for p in self.satellites[s].getVidages()]) for s in self.satellites}
+        mins = {s : min([self.satellites[s].getDownload(p).getStartDate() for p in self.satellites[s].getDownloads()]) for s in self.satellites}
+        maxs = {s : max([self.satellites[s].getDownload(p).getEndDate() for p in self.satellites[s].getDownloads()]) for s in self.satellites}
         self.horizonVid = { s : (mins[s],maxs[s]) for s in mins} 
     
     def initGlobalData(self):
@@ -1701,34 +1685,30 @@ class Constellation:
         config.donnees.tmin = self.tmin
         config.donnees.tmax = self.tmax    
     
-    def readObs(self,line,offset,idRequete):
+    def readObs(self,line,offset,idRequest):
         if not(len(line)==9+offset):
             print(line,len(line),offset)
             assert(False)
         idObs,idSat = int(line[0+offset]),int(line[1+offset])
-        debut,fin = float(line[2+offset]),float(line[3+offset])
-        #dureeObs,dureeDl = float(line[4+offset]),float(line[5+offset])
-        #memoire = int(line[6+offset])
-        dureeObs = float(line[4+offset])
+        startDate,endDate = float(line[2+offset]),float(line[3+offset])
+        obsDuration = float(line[4+offset])
         x,y,z = float(line[5+offset]),float(line[6+offset]),float(line[7+offset])
         score = float(line[8+offset])
-        #downloads = [int(x) for x in line[9+offset:]]
-        self.mapping_sat[idObs] = idSat
-        #assert(score>0)
-        return Observation(idObs,idSat,debut,fin,dureeObs,x,y,z,score,idRequete)
+        self.mappingSat[idObs] = idSat
+        return Observation(idObs,idSat,startDate,endDate,obsDuration,x,y,z,score,idRequest)
     
-    def supprimerSatellitesSansObs(self,vid,obs):
+    def deleteSatelliteWithoutObservations(self,vid,obs):
         del_vid = [s for s in vid if s not in obs]
         for s in del_vid:
             del vid[s]
     
-    def statsCoordonnees(self):
+    def statsCoordinates(self):
         xyz = [0,0,0]
         minCoord = [np.Inf,np.Inf,np.Inf]
         maxCoord = [-np.Inf,-np.Inf,-np.Inf]
         nPoints = 0
-        for r in self.getToutesRequetes():
-            xyz_r,minCoord_r,maxCoord_r,n_r = self.getRequete(r).statsCoordonnees(self)
+        for r in self.getAllRequests():
+            xyz_r,minCoord_r,maxCoord_r,n_r = self.getRequest(r).statsCoordinates(self)
             xyz = [xyz[i]+xyz_r[i] for i in range(3)]
             minCoord = [min(minCoord[i],minCoord_r[i]) for i in range(3)]
             maxCoord = [max(maxCoord[i],maxCoord_r[i]) for i in range(3)]
@@ -1736,155 +1716,154 @@ class Constellation:
         xyz = tuple([xyz[i]/nPoints for i in range(3)])
         return xyz,minCoord,maxCoord,nPoints
     
-    def readDownloads(self,fichier,affichage):
+    def readDownloads(self,fichier,display):
         self.nv = int(fichier.readline())
         vid = {}
         for i in range(self.nv):
             line = fichier.readline().split(",")
-            v = Vidage(line)
+            v = Download(line)
             s = v.getSat()
             if s not in vid:
                 vid[s] = {}
             vid[s][v.getId()] = v
-            self.mapping_sat[v.getId()] = s
+            self.mappingSat[v.getId()] = s
         return vid
     
-    def readSatellites(self,obs,vid,affichage):
-        vehicules = {}
+    def readSatellites(self,obs,vid,display):
+        satellites = {}
         for s in vid:
             if s in obs:
-                vehicules[s] = Satellite(s,obs[s],vid[s])
-        self.ns = len(list(vehicules.keys()))
-        self.satellites = vehicules        
+                satellites[s] = Satellite(s,obs[s],vid[s])
+        self.ns = len(list(satellites.keys()))
+        self.satellites = satellites        
                     
     def readRequests(self,fichier):
         line = fichier.readline().split('\n')[0].split(",")
-        nRequetes = int(line[0])
-        observations_satellites = {}
+        nRequests = int(line[0])
+        satellitesObservations = {}
         no = 0
-        self.requetes = {}
+        self.requests = {}
         err = 0
-        for r in range(nRequetes):
+        for r in range(nRequests):
             line = fichier.readline().split('\n')[0].split(",")
-            idRequete,nObs,priorite,typeRequete = int(line[0]),int(line[1]),0,line[2]
+            idRequest,nObs,priority,requestType = int(line[0]),int(line[1]),0,line[2]
             no += nObs
             observations = {}
             for i in range(nObs):
                 line = fichier.readline().split('\n')[0].split(",")
-                if typeRequete == TYPE_PERIODIC or typeRequete == TYPE_STEREO:
+                if requestType == TYPE_PERIODIC or requestType == TYPE_STEREO:
                     timeSlot = int(line[0])
                     offset = 1
                 else:
                     timeSlot = 0
                     offset = 0
-                obs = self.readObs(line,offset,idRequete)
+                obs = self.readObs(line,offset,idRequest)
                 if timeSlot not in observations:
                     observations[timeSlot] = []
                 if (obs.getId() not in [x[2] for x in observations[timeSlot]]):
                     observations[timeSlot].append((obs.getScore(),obs.getSat(),obs.getId()))
                     s = obs.getSat()
-                    if s not in observations_satellites:
-                        observations_satellites[s] = {}
-                    observations_satellites[s][obs.getId()] = obs
+                    if s not in satellitesObservations:
+                        satellitesObservations[s] = {}
+                    satellitesObservations[s][obs.getId()] = obs
                 else:
                     err += 1
             if r<config.getOptValue("test_req") and sum([len(observations[s])!=0 for s in observations]):
-                if typeRequete==TYPE_MONO:
-                    req = RequeteMono(idRequete,priorite,observations)
-                elif typeRequete==TYPE_LONG_MONO:
-                    req = RequeteLongMono(idRequete,priorite,observations)
-                elif typeRequete==TYPE_STEREO:
-                    req = RequeteStereo(idRequete,priorite,observations)
-                elif typeRequete==TYPE_PERIODIC:
-                    req = RequetePeriodic(idRequete,priorite,observations)
-                elif typeRequete==TYPE_SYSTEMATIC:
+                if requestType==TYPE_MONO:
+                    req = MonoRequest(idRequest,priority,observations)
+                elif requestType==TYPE_LONG_MONO:
+                    req = LongMonoRequest(idRequest,priority,observations)
+                elif requestType==TYPE_STEREO:
+                    req = StereoRequest(idRequest,priority,observations)
+                elif requestType==TYPE_PERIODIC:
+                    req = PeriodicRequest(idRequest,priority,observations)
+                elif requestType==TYPE_SYSTEMATIC:
                     if config.getOptValue("include_systematic"):
-                        req = RequeteSystematic(idRequete,priorite,observations)
+                        req = SystematicRequest(idRequest,priority,observations)
                     else:
                         req = None
                 else:
                     print(line)
-                    raise ValueError("type de requête inconnue : "+typeRequete)
+                    raise ValueError("type de requête inconnue : "+requestType)
                 if req is not None:
-                    self.requetes[idRequete] = req
-        #printColor(err,"obs redondantes",c='r')
+                    self.requests[idRequest] = req
         self.no = no
         config.donnees.no = no
-        return observations_satellites
+        return satellitesObservations
     
-    def filtrerModesPresents(self,solution,grapheDep,modeleDeTransition):
+    def filterPresentModes(self,solution,graphDep,modeleDeTransition):
         contenu_modes = {}
         modes = []
         
         for s in solution.getSolCCAs():
             for cca in solution.getSolCCAs()[s]:
                 for a in solution.getSolCCAs()[s][cca].getSequence():
-                    r = self.getRequeteActivite(a)
+                    r = self.getRequestActivity(a)
                     if r not in contenu_modes:
                         contenu_modes[r] = []
                     contenu_modes[r].append(a)
-        for r in self.getRequetes():
-            if r!= -1: # vidage
-                self.getRequete(r).resetModes(self,conserve_old=False,initFirstMode=False)
-                assert(len(self.getRequete(r).getModes())==0)
+        for r in self.getRequests():
+            if r!= -1: # Download
+                self.getRequest(r).resetModes(self,conserveOld=False,initFirstMode=False)
+                assert(len(self.getRequest(r).getModes())==0)
                 if r in contenu_modes:
-                    if self.getRequete(r).acceptable(contenu_modes[r],self):
-                        mode = self.getRequete(r).filtrerModesPresents(contenu_modes[r],self)
+                    if self.getRequest(r).acceptable(contenu_modes[r],self):
+                        mode = self.getRequest(r).filterPresentModes(contenu_modes[r],self)
                         assert(mode.getId()==0)
                         modes.append((r,mode.getId()))
                     else:        
                         for a in contenu_modes[r]:
-                            (s,cca) = grapheDep.getActiviteCCA(a)
-                            solution.getSolCCA(s,cca).retirerActivite(self,a,modeleDeTransition)
+                            (s,cca) = graphDep.getActivityCCA(a)
+                            solution.getSolCCA(s,cca).removeActivity(self,a,modeleDeTransition)
             else:
                 modes.append((r,0))
         solution.setModesRetenus(modes,self)
         
-    def __init__(self,fileName,start_date,affichage=True):
+    def __init__(self,fileName,startDate,display=True):
         config.glob.filename = fileName.split("/")[-1].split(".")[0]
         comm = MPI.COMM_WORLD
         size = comm.Get_size()
         config.glob.size = size
         
-        self.start_date = start_date
+        self.startDate = startDate
         self.fichier = fileName
         fichier = open(fileName,"r")
-        self.mapping_sat = {}
+        self.mappingSat = {}
         obs = self.readRequests(fichier)
-        vid = self.readDownloads(fichier,affichage)
-        self.supprimerSatellitesSansObs(vid,obs)
-        self.requetes[-1] = RequeteVidage(-1,1,vid)
-        self.readSatellites(obs,vid,affichage)
+        vid = self.readDownloads(fichier,display)
+        self.deleteSatelliteWithoutObservations(vid,obs)
+        self.requests[-1] = DownloadRequest(-1,1,vid)
+        self.readSatellites(obs,vid,display)
         self.initTimeData()
-        self.initDependancesActivites()
+        self.initDependancesActivities()
         self.initGlobalData()
         
         
         if config.getOptValue("verif"):
-            for r in self.getRequetes():
-                activites = self.extraireActivitesRequetes()
-                for s in activites:
-                    for a in activites[s]:
-                        assert(s==self.getSatelliteActivite(a))
+            for r in self.getRequests():
+                activities = self.extraireActivitiesRequetes()
+                for s in activities:
+                    for a in activities[s]:
+                        assert(s==self.getSatelliteActivity(a))
         
-        if affichage:
-            printColor("Lecture OK.\n",c='g')
-            xyz,minCoord,maxCoord,nPoints = self.statsCoordonnees()
+        if display:
+            printColor("Reading OK.\n",c='g')
+            xyz,minCoord,maxCoord,nPoints = self.statsCoordinates()
             shift = getDisplayDepth()-1
             shiftLeftDisplay(shift)
-            printColor("====================== [ Constellation ] ======================",c='y')
-            printColor("| Requêtes :",str(len(list(self.requetes.keys()))),c='y')
-            printColor("| Observations :",str(nPoints),c='y')
-            printColor("| Interval latitude : [",minCoord[0],",",maxCoord[0],"]",c='y')
-            printColor("| Interval longitude : [",minCoord[1],",",maxCoord[1],"]",c='y')
-            printColor("| Point moyen :",(xyz[0],xyz[1]),c='y')
-            printColor("===============================================================",c='y')
+            printColor("====================== [ System summary ] ======================",c='y')
+            printColor("| Requests:",str(len(list(self.requests.keys()))),c='y')
+            printColor("| Observations:",str(nPoints),c='y')
+            printColor("| Latitude range: [",minCoord[0],",",maxCoord[0],"]",c='y')
+            printColor("| Longitude range: [",minCoord[1],",",maxCoord[1],"]",c='y')
+            printColor("| Mean target:",(xyz[0],xyz[1]),c='y')
+            printColor("================================================================",c='y')
             shiftRightDisplay(shift)
         if config.getOptValue("dynamic"):
-            minute_dernieres_requetes=config.getOptValue("derniere_requete")
-            proportion_depart = config.getOptValue("proportion_depart")
-            discretisation_minutes = config.getOptValue("dt_requetes")
-            self.requestDealer = RequestDealer(self,start_date,proportion_depart,discretisation_minutes*60,minute_dernieres_requetes*60)
+            minuteLastRequests=config.getOptValue("derniere_requete")
+            startingProportion = config.getOptValue("proportion_depart")
+            dt_minutes = config.getOptValue("dt_requests")
+            self.requestDealer = RequestDealer(self,startDate,startingProportion,dt_minutes*60,minuteLastRequests*60)
             
     
     """
@@ -1892,8 +1871,8 @@ class Constellation:
                         GETTER
         =========================================================    
     """
-    def getRequetesDepart(self):
-        return self.requestDealer.getRequetesDepart()
+    def getStartingRequests(self):
+        return self.requestDealer.getStartingRequests()
     
     def getFilename(self):
         return config.glob.filename
@@ -1901,95 +1880,85 @@ class Constellation:
     def getSatellite(self,s):
         return self.satellites[s]
     
-    def getActivite(self,a,s=None):
+    def getActivity(self,a,s=None):
         if s is None:
-            s = self.getSatelliteActivite(a)
-        return self.getSatellite(s).getActivite(a)
+            s = self.getSatelliteActivity(a)
+        return self.getSatellite(s).getActivity(a)
     
-    def getNombreActivites(self):
+    def countActivities(self):
         return self.no+self.nv
 
-    def getIdActivitesMax(self):
-        return max(list(self.mapping_sat.keys()))
+    def getIdActivitiesMax(self):
+        return max(list(self.mappingSat.keys()))
     
     def getSatellites(self):
         return self.satellites
     
-    def getToutesRequetes(self):
-        return list(self.requetes.keys())
+    def getAllRequests(self):
+        return list(self.requests.keys())
     
-    def libererNouvellesRequetes(self,grapheDependances):
-        return self.requestDealer.scruterArriveeNouvellesRequetes(self,grapheDependances)
+    def releaseNewRequests(self,graphDependances):
+        return self.requestDealer.scruterArriveeNouvellesRequetes(self,graphDependances)
     
-    def getRequetes(self,allow_new=False,grapheDependances=None):  
+    def getRequests(self,allow_new=False,graphDependances=None):  
         if config.getOptValue("dynamic"):
             if allow_new:
-                self.requestDealer.scruterArriveeNouvellesRequetes(self,grapheDependances)
+                self.requestDealer.scruterArriveeNouvellesRequetes(self,graphDependances)
             else:
-                assert(grapheDependances is None)
-            return [r for  r in self.requetes if self.requetes[r].estActif()]
+                assert(graphDependances is None)
+            return [r for  r in self.requests if self.requests[r].isActive()]
         else:
             assert(not allow_new)
-            return list(self.requetes.keys())
+            return list(self.requests.keys())
     
-    def getRequete(self,r):
-        return self.requetes[r]
+    def getRequest(self,r):
+        return self.requests[r]
     
-    def estVidage(self,p):
+    def isDownload(self,p):
         return p>=self.no
     
-    def estObservation(self,p):
+    def isObservation(self,p):
         return p<self.no
     
-    def getSatelliteActivite(self,a):
-        return self.mapping_sat[a]
+    def getSatelliteActivity(self,a):
+        return self.mappingSat[a]
     
-    def nombresModes(self):
-        modes_easy = [len(list(self.requetes[r].getModes().keys())) for r in self.requetes if self.getRequete(r).getType()=="ONE_SHOT_MONO" or self.getRequete(r).getType()=="ONE_SHOT_STEREO"]
-        modes_hard = [len(list(self.requetes[r].getModes().keys())) for r in self.requetes if self.getRequete(r).getType()=="PERIODIC" or self.getRequete(r).getType()=="SYSTEMATIC"]
-        return np.mean(modes_easy),np.std(modes_easy),np.mean(modes_hard),np.std(modes_hard)
-    
-    def taillesModes(self):
-        modes_easy = [len(self.requetes[r].getMode(m).getCouples()) for r in self.requetes if self.getRequete(r).getType()=="ONE_SHOT_MONO" or self.getRequete(r).getType()=="ONE_SHOT_STEREO"]
-        modes_hard = [len(self.requetes[r].getMode(m).getCouples()) for r in self.requetes if self.getRequete(r).getType()=="PERIODIC" or self.getRequete(r).getType()=="SYSTEMATIC"]
-        return np.mean(modes_easy),np.std(modes_easy),np.mean(modes_hard),np.std(modes_hard)
-
-    def melangeBatch(self,liste,quantiles):
+    def shuffleBatch(self,liste,quantiles):
         longueur = [int(q*len(liste)) for q in quantiles]
         for i,q in enumerate(longueur):
             if(i<len(longueur)-1):
                 q2 = longueur[i+1]
                 liste[q:q2] = rd.sample(liste[q:q2], len(liste[q:q2]))
 
-    def scoreObsMoyenne(self,liste_modes_candidats):
+    def meanObservationScore(self,candidateModes):
         score = []
-        for (r,m) in liste_modes_candidats:
-            for  (s,o) in self.getRequete(r).getCouples():
-                if self.getSatellite(s).estObservation(o):
+        for (r,m) in candidateModes:
+            for  (s,o) in self.getRequest(r).getPairs():
+                if self.getSatellite(s).isObservation(o):
                     score.append(self.getSatellite(s).getObservation(o).getScore())
         if len(score)==0:
             return 0
         else:
             return np.mean(score)
     
-    def afficherModes(self):
-        for r in self.getRequetes():
-            for m in self.getRequete(r).getModes():
-                print(self.getRequete(r).getMode(m))
+    def printModes(self):
+        for r in self.getRequests():
+            for m in self.getRequest(r).getModes():
+                print(self.getRequest(r).getMode(m))
     
-    def extraireActivitesMode(self,constellation,r,m):
+    def extractActivitiesFromMode(self,constellation,r,m):
         act = []
-        for (s,o,d) in constellation.getRequete(r).getMode(m).getCouples():
+        for (s,o,d) in constellation.getRequest(r).getMode(m).getPairs():
             if o not in act:
                 act.append(o)
             if d not in act:
                 act.append(d)
         return act  
     
-    def extraireActivitesRequetes(self):
+    def extractActivitiesFromRequests(self):
         act = {}
-        for r in self.getToutesRequetes():
-            act_r = self.getRequete(r).getActivites()
+        for r in self.getAllRequests():
+            act_r = self.getRequest(r).getActivities()
             for s in act_r:
                 if s not in act:
                     act[s] = []
@@ -1997,10 +1966,10 @@ class Constellation:
                     act[s].append(o)
         return act 
 
-    def extraireActivitesRequetesActives(self,grapheDependances):
+    def extractActivitiesActiveRequests(self,graphDependances):
         act = {}
-        for r in self.getRequetes(grapheDependances):
-            act_r = self.getRequete(r).getActivites()
+        for r in self.getRequests(graphDependances):
+            act_r = self.getRequest(r).getActivities()
             for s in act_r:
                 if s not in act:
                     act[s] = []
@@ -2012,13 +1981,13 @@ class Constellation:
                     VERIF/DEBUG
         ========================================================= 
     """
-    def verifierModes(self):
-        n_modes = sum([len(list(self.getRequete(r).getModes().keys())) for r in self.getToutesRequetes()])
+    def verifyModes(self):
+        n_modes = sum([len(list(self.getRequest(r).getModes().keys())) for r in self.getAllRequests()])
         modes_faux = 0
-        for r in self.getToutesRequetes():
-            for m in self.getRequete(r).getModes():
-                for s,o,d in self.getRequete(r).getMode(m).getCouples():
-                    if(self.satellites[s].getObservation(o).getDuree()>self.satellites[s].getObservation(o).getFin()-self.satellites[s].getObservation(o).getDebut()):
+        for r in self.getAllRequests():
+            for m in self.getRequest(r).getModes():
+                for s,o,d in self.getRequest(r).getMode(m).getPairs():
+                    if(self.satellites[s].getObservation(o).getDuration()>self.satellites[s].getObservation(o).getEndDate()-self.satellites[s].getObservation(o).getStartDate()):
                         modes_faux += 1
                         break
         return modes_faux/n_modes
@@ -2029,46 +1998,45 @@ class Constellation:
                         GRAPHIQUES
         =========================================================  
     """
-    def tracerPertesModes(self):
-        return self.solution.tracerPertesModes()
-        #plt.title(str(len(self.solution.modes_retenus))+'/'+str(len(list(self.requetes.keys())))+" fulfilled requests")
+    def plotModesLosses(self):
+        return self.solution.plotModesLosses()
     
-    def tracerNombresModes(self,affichage='boxplot'):
-        if(affichage=='hist'):
+    def plotNumberOfModes(self,display='boxplot'):
+        if(display=='hist'):
             f,ax = plt.subplots()
-            valeurs = np.unique([self.getRequete(r).getType() for r in self.getToutesRequetes()])
+            valeurs = np.unique([self.getRequest(r).getType() for r in self.getAllRequests()])
             for val in valeurs:
-                ax.hist([len(self.getRequete(r).getModes()) for r in self.getToutesRequetes() if self.getRequete(r).getType()==val])
+                ax.hist([len(self.getRequest(r).getModes()) for r in self.getAllRequests() if self.getRequest(r).getType()==val])
             plt.legend(valeurs)
             plt.title('count modes')
             #return f
-        elif affichage=='boxplot':       
+        elif display=='boxplot':       
             df = pd.DataFrame([],columns=['count','type'])
-            for r in self.getToutesRequetes():
-                df = df.append({'count':len(self.getRequete(r).getModes()),'type':self.getRequete(r).getType()},ignore_index=True)
+            for r in self.getAllRequests():
+                df = df.append({'count':len(self.getRequest(r).getModes()),'type':self.getRequest(r).getType()},ignore_index=True)
             sns.boxplot(y='count',x='type',data=df, palette="colorblind").set_title('count modes')
         else:
             raise NameError()
             
-    def tracerTaillesModes(self,affichage='boxplot'):
-        if(affichage=='hist'):
+    def plotModesSizes(self,display='boxplot'):
+        if(display=='hist'):
             f,ax = plt.subplots()
-            valeurs = np.unique([self.getRequete(r).getType() for r in self.getToutesRequetes()])
+            valeurs = np.unique([self.getRequest(r).getType() for r in self.getAllRequests()])
             for val in valeurs:
-                ax.hist([len(self.getRequete(r).getMode(m).getCouples()) for r in self.getToutesRequetes() for m in self.getRequete(r).getModes() if self.getRequete(r).getType()==val])
+                ax.hist([len(self.getRequest(r).getMode(m).getPairs()) for r in self.getAllRequests() for m in self.getRequest(r).getModes() if self.getRequest(r).getType()==val])
             plt.legend(valeurs)
             plt.title("mode size (number of observations)")
             #return f
-        elif affichage=='boxplot':
+        elif display=='boxplot':
             df = pd.DataFrame([],columns=['count','type'])
-            for r in self.getToutesRequetes():
-                for m in self.getRequete(r).getModes():
-                    df = df.append({'count':len(self.getRequete(r).getMode(m).getCouples()),'type':self.getRequete(r).getType()},ignore_index=True)
+            for r in self.getAllRequests():
+                for m in self.getRequest(r).getModes():
+                    df = df.append({'count':len(self.getRequest(r).getMode(m).getPairs()),'type':self.getRequest(r).getType()},ignore_index=True)
             sns.boxplot(y='count',x='type',data=df, palette="colorblind").set_title('modes size')
         else:
             raise NameError()  
             
-    def tracerDemandeConstellation(self):
+    def plotConstellationLoad(self):
         f,ax = plt.subplots(len(self.satellites.keys()),1)
         obs = {s : self.satellites[s].getObservations() for s in self.satellites}
         for s in obs:
@@ -2076,12 +2044,12 @@ class Constellation:
             Y = []
             temps = []
             for o in obs[s]:
-                if obs[s][o].getDebut() not in temps:
-                    temps.append(obs[s][o].getDebut())
-                if obs[s][o].getFin() not in temps:
-                    temps.append(obs[s][o].getFin())
+                if obs[s][o].getStartDate() not in temps:
+                    temps.append(obs[s][o].getStartDate())
+                if obs[s][o].getEndDate() not in temps:
+                    temps.append(obs[s][o].getEndDate())
             for t in temps:
-                count = len([o for o in obs[s] if t>= obs[s][o].getDebut() and t<= obs[s][o].getFin()])
+                count = len([o for o in obs[s] if t>= obs[s][o].getStartDate() and t<= obs[s][o].getEndDate()])
                 X.append(t)
                 Y.append(count)
             XY = [(X[i],Y[i]) for i in range(len(X))]
@@ -2090,19 +2058,19 @@ class Constellation:
         f.suptitle('charge de la constellation')
         return f
     
-    def tracerDemande(self,s):
+    def plotSatelliteLoad(self,s):
         f,ax = plt.subplots(1,1)
         obs = {s : self.satellites[s].getObservations()}
         X = []
         Y = []
         temps = []
         for o in obs[s]:
-            if obs[s][o].getDebut() not in temps:
-                temps.append(obs[s][o].getDebut())
-            if obs[s][o].getFin() not in temps:
-                temps.append(obs[s][o].getFin())
+            if obs[s][o].getStartDate() not in temps:
+                temps.append(obs[s][o].getStartDate())
+            if obs[s][o].getEndDate() not in temps:
+                temps.append(obs[s][o].getEndDate())
         for t in temps:
-            count = len([o for o in obs[s] if t>= obs[s][o].getDebut() and t<= obs[s][o].getFin()])
+            count = len([o for o in obs[s] if t>= obs[s][o].getStartDate() and t<= obs[s][o].getEndDate()])
             X.append(t)
             Y.append(count)
         XY = [(X[i],Y[i]) for i in range(len(X))]
@@ -2111,26 +2079,25 @@ class Constellation:
         f.suptitle('charge du satellite {}'.format(s))
         return f
         
-    def tracerMode(self,f,r,m):
+    def plotMode(self,f,r,m):
         #f,ax = plt.subplots()
-        for s,o,d in self.requetes[r].getMode(m).getCouples():
-            debut,fin = self.satellites[s].getObservations()[o].getDebut(),self.satellites[s].getObservations()[o].getFin()
-            plt.plot([debut,fin],[s,s],'-b',alpha=0.1)
+        for s,o,d in self.requests[r].getMode(m).getPairs():
+            startDate,endDate = self.satellites[s].getObservations()[o].getStartDate(),self.satellites[s].getObservations()[o].getEndDate()
+            plt.plot([startDate,endDate],[s,s],'-b',alpha=0.1)
         return f
     
-    def tracerModes(self,f):
-        for r in self.requetes:
-            for m in self.requetes[r].getModes():
-                f = self.tracerMode(f,r,m)
+    def plotModes(self,f):
+        for r in self.requests:
+            for m in self.requests[r].getModes():
+                f = self.plotMode(f,r,m)
         return f
     
-    def tracerEchantillonsRecompenses(self):
-        rr = rd.choices(list(self.getToutesRequetes().keys()),k=4)
+    def plotUtilitiesSamples(self):
+        rr = rd.choices(list(self.getAllRequests().keys()),k=4)
         for r in rr:
-            n,bins,patch = plt.hist([constellation.getRequete(r).getMode(m).getRecompense()  for m in constellation.getRequete(r).getModes()])
-            print(histToLatex(n,bins,"reward (request "+str(r)+")","mode count"))
+            n,bins,patch = plt.hist([constellation.getRequest(r).getMode(m).getUtility()  for m in constellation.getRequest(r).getModes()])
+            print(histToLatex(n,bins,"utility (request "+str(r)+")","mode count"))
             
-    def tracerActivite(self,annoter=False):
+    def plotLoad(self,annoter=False):
         f = self.solution.tracerActivite(annoter)
-        #plt.title(str(len(self.getModesSolution())) +'/'+ str(len(self.getRequetes().keys())) + ' requêtes satisfaites')
         return f

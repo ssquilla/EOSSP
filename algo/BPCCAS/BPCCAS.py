@@ -6,12 +6,12 @@ instance = config.instance
 from mpi4py import MPI
 if config.getOptValue("help"):
     if MPI.COMM_WORLD.Get_rank()==0:
-        config.afficherAide()
+        config.displayHelp()
 else:    
     from ..model.solution import *
     from ..model.constellation import *
-    from ..model.composantes import *
-    from ..model.solution_composantes import *
+    from ..model.components import *
+    from ..model.componentPlan import *
     
     from time import time
     from time import sleep
