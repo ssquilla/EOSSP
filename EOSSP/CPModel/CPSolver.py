@@ -22,97 +22,96 @@ else:
     
     
     class CPSolver(Solver):
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
-            super().__init__(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
-            self.objectif = (0,0)
-            self.initRequetes(constellation,initFirstMode=False)
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+            super().__init__(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            self.objective = (0,0)
+            self.initRequests(constellation,initFirstMode=False)
             
         def resetModeSolver(self,constellation):
-            printOpen("Génération des modes")
+            printOpen("Generate modes")
             self.model = CpoModel()
             modes = []
-            for r in constellation.getRequetes():
-                printOpen("Durée de génération des modes pour la requête ",r,"("+constellation.getRequete(r).getType()+")")
-                for m in constellation.getRequete(r).getKMeilleursModes(constellation,config.getOptValue("modes")):
+            for r in constellation.getRequests():
+                printOpen("Generation duration for request ",r,"("+constellation.getRequest(r).getType()+")")
+                for m in constellation.getRequest(r).getKBestModes(constellation,config.getOptValue("modes")):
                     modes.append((r,m.getId()))
                 printClose()
             printClose()
-            #self.solution.historique.tracerImplicationObs(self.grapheDependances,constellation,tri_cca=True)
             return modes
         
         def initVars(self,constellation):
-            printOpen("Initialisation des variables")
-            self.interval_vars = {}
-            self.mode_var = {}
-            self.requetes_activites = {}
+            printOpen("Variables initialization")
+            self.intervalVars = {}
+            self.modeVars = {}
+            self.requestActivities = {}
             for (r,m) in self.modes:
                 if r!=-1:
-                    self.mode_var[(r,m)] = self.model.binary_var(name="y_"+str((r,m)))
-                    self.model.add(self.mode_var[(r,m)])
-                for (s,a) in constellation.getRequete(r).getMode(m).getCouples():
-                    if a not in self.requetes_activites:
-                        self.requetes_activites[a] = []
-                    self.requetes_activites[a].append((r,m))
-                    if a not in self.interval_vars:
-                        start = int(math.floor(constellation.getSatellite(s).getActivite(a).getDebut()))
-                        end = int(math.ceil(constellation.getSatellite(s).getActivite(a).getFin()))
-                        duree = int(math.ceil(constellation.getSatellite(s).getActivite(a).getDuree()))
-                        assert(start+duree<=end)
-                        self.interval_vars[a] = self.model.interval_var(start=(start,end),end=(start,end),length=duree,name="Ia_{}_{}".format(s,a))
-                        self.model.add(self.interval_vars[a])
-            obj1 = sum([self.recompenseBruitee(constellation,r,m)[0]*self.mode_var[(r,m)] for (r,m) in self.mode_var])
+                    self.modeVars[(r,m)] = self.model.binary_var(name="y_"+str((r,m)))
+                    self.model.add(self.modeVars[(r,m)])
+                for (s,a) in constellation.getRequest(r).getMode(m).getCouples():
+                    if a not in self.requestActivities:
+                        self.requestActivities[a] = []
+                    self.requestActivities[a].append((r,m))
+                    if a not in self.intervalVars:
+                        start = int(math.floor(constellation.getSatellite(s).getActivity(a).getStartDate()))
+                        end = int(math.ceil(constellation.getSatellite(s).getActivity(a).getEndDate()))
+                        duration = int(math.ceil(constellation.getSatellite(s).getActivity(a).getDuration()))
+                        assert(start+duration<=end)
+                        self.intervalVars[a] = self.model.interval_var(start=(start,end),end=(start,end),length=duration,name="Ia_{}_{}".format(s,a))
+                        self.model.add(self.intervalVars[a])
+            obj1 = sum([self.noiseUtility(constellation,r,m)[0]*self.modeVars[(r,m)] for (r,m) in self.modeVars])
             self.model.maximize(obj1)
             #self.model.maximize(obj2)
             printClose()
             
         def initConstraints(self,constellation):
-            printOpen("Initialisation des contraintes")
+            printOpen("Constraints initialization")
             # 1 mode par requete
-            for r in constellation.getRequetes():
-                modes = [x for x in self.mode_var if x[0]==r]
+            for r in constellation.getRequests():
+                modes = [x for x in self.modeVars if x[0]==r]
                 if len(modes)>0:
-                    self.model.add(sum([self.mode_var[x] for x in modes])<=1)
+                    self.model.add(sum([self.modeVars[x] for x in modes])<=1)
             # presence des activites = presence d'un mode
-            for a in self.interval_vars:
-                #print(self.requetes_activites[a],a)
-                r = self.requetes_activites[a][0][0]
+            for a in self.intervalVars:
+                #print(self.requestActivities[a],a)
+                r = self.requestActivities[a][0][0]
                 if r != -1:    
-                    self.interval_vars[a].set_optional()
-                    self.model.add(self.model.presence_of(self.interval_vars[a]) == sum([self.mode_var[x] for x in self.requetes_activites[a]]))
+                    self.intervalVars[a].set_optional()
+                    self.model.add(self.model.presence_of(self.intervalVars[a]) == sum([self.modeVars[x] for x in self.requestActivities[a]]))
                 else:
-                    self.model.add(self.model.presence_of(self.interval_vars[a]) == 1)
-            self.decompositionActivitesCCA()
+                    self.model.add(self.model.presence_of(self.intervalVars[a]) == 1)
+            self.getActivitiesByCCA()
             # flot sur les cca
-            for id_cca in self.cca_act:
-                s,cca = id_cca
-                n = len(self.cca_act[id_cca])
+            for idCCA in self.ccaActivities:
+                s,cca = idCCA
+                n = len(self.ccaActivities[idCCA])
                 distance_matrix = np.zeros((n,n),dtype=int)
                 vars_list = []
-                for i,a1 in enumerate(self.cca_act[id_cca]):
-                    vars_list.append(self.interval_vars[a1])
-                    for j,a2 in enumerate(self.cca_act[id_cca]):
+                for i,a1 in enumerate(self.ccaActivities[idCCA]):
+                    vars_list.append(self.intervalVars[a1])
+                    for j,a2 in enumerate(self.ccaActivities[idCCA]):
                         if i==j:
                             distance_matrix[i][j] = 0
                         else:
-                            transition = constellation.getSatellite(s).getTransition(a1,a2,self.modeleDeTransition)
+                            transition = constellation.getSatellite(s).getTransitionDuration(a1,a2,self.transitionModel)
                             distance_matrix[i][j] = int(math.ceil(transition))
                 mat = self.model.transition_matrix(distance_matrix)
                 seq = self.model.sequence_var(vars_list)
                 self.model.add(self.model.no_overlap(seq,distance_matrix=mat))
             printClose()
         
-        def decompositionActivitesCCA(self):
-            mapping_cca_activites = {}
-            for a in self.interval_vars:
-                id_cca = self.grapheDependances.getActiviteCCA(a)
-                if id_cca not in mapping_cca_activites:
-                    mapping_cca_activites[id_cca] = []
-                mapping_cca_activites[id_cca].append(a)
-            self.cca_act = mapping_cca_activites
+        def getActivitiesByCCA(self):
+            mappingActivitiesByCCA = {}
+            for a in self.intervalVars:
+                idCCA = self.getGraphComponents().getActivityCCA(a)
+                if idCCA not in mappingActivitiesByCCA:
+                    mappingActivitiesByCCA[idCCA] = []
+                mappingActivitiesByCCA[idCCA].append(a)
+            self.ccaActivities = mappingActivitiesByCCA
         
         def initIteration(self,constellation):
             self.setAllSolCCAs ({s : {} for s in constellation.satellites}) # liste de solutions CCA
-            for s,cca in self.grapheDependances.getComposantes():
+            for s,cca in self.getGraphComponents().getComponents():
                 self.setSolCCA(s,cca, SolCCA(cca,s))
             self.modes = self.resetModeSolver(constellation)
             self.initVars(constellation)
@@ -124,37 +123,37 @@ else:
             =============================================== 
         """
         
-        def insererSequences(self,constellation,sequences):
-            requetes_retenues = [x[0] for x in self.getModesRetenus()]
+        def insertSequences(self,constellation,sequences):
+            fulfilledRequests = [x[0] for x in self.getSelectedModes()]
             for s,cca in sequences:
-                seq = [a for a in sequences[(s,cca)] if constellation.getRequeteActivite(a) in requetes_retenues]
+                seq = [a for a in sequences[(s,cca)] if constellation.getRequestActivite(a) in fulfilledRequests]
                 #print("set sequence",s,cca)
                 self.getSolCCA(s,cca).setSequence(constellation,seq)
         
-        def remplirSolCCAs(self,constellation,sol):
-            obs_cca = {}
-            for a in self.interval_vars:
-                r = self.requetes_activites[a][0][0]
-                if r==-1 or sum([sol.get_value(self.mode_var[x]) for x in self.requetes_activites[a]])==1:
-                    id_cca = self.grapheDependances.getActiviteCCA(a)
-                    if id_cca not in obs_cca:
-                        obs_cca[id_cca] = []
-                    val = sol.get_value(self.interval_vars[a])
-                    obs_cca[id_cca].append((val[0],a))
-            for id_cca in obs_cca:
-                s,cca = id_cca
-                seq = [x[1] for x in sorted(obs_cca[id_cca])] 
-                self.getSolCCA(s,cca).setSequence(constellation,seq,self.modeleDeTransition)
+        def fillSolCCAs(self,constellation,sol):
+            obsCCA = {}
+            for a in self.intervalVars:
+                r = self.requestActivities[a][0][0]
+                if r==-1 or sum([sol.get_value(self.modeVars[x]) for x in self.requestActivities[a]])==1:
+                    idCCA = self.getGraphComponents().getActivityCCA(a)
+                    if idCCA not in obsCCA:
+                        obsCCA[idCCA] = []
+                    val = sol.get_value(self.intervalVars[a])
+                    obsCCA[idCCA].append((val[0],a))
+            for idCCA in obsCCA:
+                s,cca = idCCA
+                seq = [x[1] for x in sorted(obsCCA[idCCA])] 
+                self.getSolCCA(s,cca).setSequence(constellation,seq,self.transitionModel)
             
-        def resoudre(self,constellation,mailbox,afficher=True):
+        def resolve(self,constellation,mailbox,afficher=True):
             temps = time()
             self.initIteration(constellation)
-            printColor("Résolution ...")
+            printColor("Solving ...")
             if config.getOptValue("time")<np.Inf:
                 tlim = math.floor(self.getTempsRestant())
             else:
                 tlim = np.Inf
-            printColor("Temps restant pour la résolution : "+str(tlim),"(s)")
+            printColor("Time left: "+str(tlim),"(s)")
             if tlim>0:
                 with open("test_output",'w') as file:
                     if config.getOptValue("threads")is not None:
@@ -166,30 +165,30 @@ else:
                             sol = self.model.solve(execfile=config.glob.docplexPath,log_output=file)
                     self.solution.historique.gap = sol.solution.get_objective_gap()
                     if str(sol.get_solve_status())!="Unknown":
-                        self.setModesRetenus([(-1,0)]+[(r,m) for (r,m) in self.mode_var if sol.get_value(self.mode_var[(r,m)])==1],constellation)
-                        self.remplirSolCCAs(constellation,sol)
-                        #self.verifierSolution(constellation)
+                        self.setSelectedModes([(-1,0)]+[(r,m) for (r,m) in self.modeVars if sol.get_value(self.modeVars[(r,m)])==1],constellation)
+                        self.fillSolCCAs(constellation,sol)
+                        #self.verifySolution(constellation)
             else:
-                raise Exception("pas le temps de lancer le solver")
-            self.notifierFinExecution(constellation)
-            self.afficherInfo(time(),self.start_date,constellation,add={'gap':self.solution.historique.gap},color='y',title='FIN')
+                raise Exception("not enough time to run the solver")
+            self.notifyEndExecution(constellation)
+            self.displayInformation(time(),self.startDate,constellation,add={'gap':self.solution.historique.gap},color='y',title='END')
                 
     class Master:
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
-            self.start_date = start_date
-            self.initSolution(constellation,tlim,modeleDeTransition,dt_construction_transition,CCAs=CCAs,solution=solution)
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+            self.startDate = startDate
+            self.initSolution(constellation,tlim,transitionModel,dt_construction_transition,CCAs=CCAs,solution=solution)
             
-        def resoudre(self,constellation,afficher=True):
+        def resolve(self,constellation,afficher=True):
             # iterer insertion-réparation
-            self.solution.resoudre(constellation,afficher)
-            self.solution.construirePlan(constellation)
+            self.solution.resolve(constellation,afficher)
+            self.solution.buildPlan(constellation)
     
-        def meilleureSolution(self):
-            return self.solution.meilleureSolution()
+        def getBestSolution(self):
+            return self.solution.getBestSolution()
         
-        def releverObjectif(self):
+        def registerObjective(self):
             rel = config.glob.releves
-            sol = self.meilleureSolution()
+            sol = self.getBestSolution()
             points = []
             i_rel = 0
             for i,(t,obj,modes) in enumerate(sol):
@@ -200,47 +199,47 @@ else:
                     i_rel += 1
             return points               
         
-        def tracerActivite(self,constellation,annoter=False):
-            return self.solution.tracerActivite(constellation,annoter)
+        def plotActivity(self,constellation,annoter=False):
+            return self.solution.plotActivity(constellation,annoter)
             
-        def tracerHistorique(self,init=True):
-            return self.solution.tracerHistorique(init)
+        def plotHistory(self,init=True):
+            return self.solution.plotHistory(init)
         
         def saveSample(self,constellation):
             self.solution.saveSample(constellation)
             
-        def initSolution(self,constellation,tlim,modeleDeTransition,dt_construction_transition,CCAs=None,solution=None):
-            self.solution = CPSolver(constellation,self.start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def initSolution(self,constellation,tlim,transitionModel,dt_construction_transition,CCAs=None,solution=None):
+            self.solution = CPSolver(constellation,self.startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             
         def getSolution(self):
             return self.solution.getSolution()
 
-        def verifierSolution(self):
-            self.solution.verifierSolution()
+        def verifySolution(self):
+            self.solution.verifySolution()
             
         def getModesSolution(self):
-            return self.solution.getModesRetenus()
+            return self.solution.getSelectedModes()
     
     
 
     class runnableCPSolver:
-        def execute(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
+        def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
             coeurs = MPI.COMM_WORLD.Get_size()
             config.setOptValue("threads",coeurs)
             if MPI.COMM_WORLD.Get_rank()==0:
-                self.process = Master(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
-                self.process.resoudre(constellation)
+                self.process = Master(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+                self.process.resolve(constellation)
                 for i in range(1,MPI.COMM_WORLD.Get_size()):
                     MPI.COMM_WORLD.send({"sol":self.process.solution.getSolutionContainer()},dest=i)
                 if config.verifMode():
-                    self.process.solution.verifierSolution(constellation)
+                    self.process.solution.verifySolution(constellation)
                 return self.process.solution.getSolutionContainer()
             else:
                 activites = constellation.extraireActivitesRequetesActives(None)
                 if CCAs is not None:
-                    self.grapheDependances = CCAs
+                    self.dependenciesGraph = CCAs
                 else:
-                    self.grapheDependances = GroupeComposantesActivitesStatiques(constellation,activites,modeleDeTransition)
+                    self.dependenciesGraph = StaticCCAsGroup(constellation,activites,transitionModel)
 
                 data = None
                 data = MPI.COMM_WORLD.recv(data)

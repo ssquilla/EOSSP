@@ -172,7 +172,7 @@ class History:
         #lecture += [("objective",self.bestObjective),("modes retenus",len(self.bestSelectedModes))]
         lecture += [("history",str(len(self.historic)) + " values registered")]
         for message,contenu in lecture:
-            mess += " | "+ message + " : " + str(contenu) +'\n'
+            mess += " | "+ message + ": " + str(contenu) +'\n'
         mess += ' '
         mess += self.formatStats() +'\n'
         mess += str(self.config)
@@ -213,7 +213,7 @@ class History:
                 if add is not None:
                     for key in add:
                         if key in sample:
-                            warning("Key "+str(key) +" already existing. Impossible dto save the sample.")
+                            warning("Key "+str(key) +" already exists. Impossible to save the sample.")
                         else:
                             sample[key] = add[key]
                 pickle.dump(sample, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -234,9 +234,7 @@ class History:
         # temps de calcul sur chaque cpu
         dico = {}
         #for stat in ['cpu succes','cpu echec','cpu ignorés','cpu total']:
-        if filtre is None or 'ratio' in filtre:
-            self.stats['ratio'] = self.computeMessageRatio()
-            message += "| ratio communication/computation : " + str(self.stats['ratio']) + '\n'
+
         for stat in []:# envoi reception calcul
             dico[stat] = {}
             for cpu in self.stats[stat]:
@@ -250,16 +248,19 @@ class History:
                 stdcpu = np.std([dico[stat][cpu] for cpu in dico[stat]])
             except:
                 mincpu,meancpu,maxcpu,stdcpu = np.Inf,None,-np.Inf,0
-            message += "| " +str(stat) + " : " + str({'min':mincpu,'mean':meancpu,'max':maxcpu,'std':stdcpu}) + '\n'
+            message += "| " +str(stat) + ": " + str({'min':mincpu,'mean':meancpu,'max':maxcpu,'std':stdcpu}) + '\n'
 
         if filtre is None or 'best' in filtre:
             message += "| best solution: " + str(self.bestObjective)  + '\n'
-
+        """
+        if filtre is None or 'ratio' in filtre:
+            self.stats['ratio'] = self.computeMessageRatio()
+            message += "| ratio communication/computation : " + str(self.stats['ratio']) + '\n'
         if filtre is None or 'repartition' in filtre:
             attente,comm,sans_sol,solver = self.getTimeUsage()
             message += "| waiting : " + str(round(attente,4)) +" %, communication : " +str(round(comm,4))
             message += " %, computation using the solver: " + str(round(sans_sol,4)) + " %, computation using the solver: " + str(round(solver,4)) + " %\n"
-
+        """
         if filtre is None or 'obs' in filtre:
             message += "| mean observation score: " + str(round(self.meanObservationScore,4)) + '\n'
         if filtre is None or 'requete' in filtre:
@@ -267,8 +268,8 @@ class History:
             message += "| planned requests: " + str(self.stats['planifiées']) + '\n'
 
         if filtre is None or "size" in filtre:
-            message += "| #CCA : " + str(self.stats["#CCA"]) + '\n'
-            message += "| #A : " + str(self.stats["#A"])
+            message += "| #CCA: " + str(self.stats["#CCA"]) + '\n'
+            message += "| #A: " + str(self.stats["#A"])
         return message
     
     def getCommunicationDuration(self):

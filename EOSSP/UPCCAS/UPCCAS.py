@@ -19,344 +19,332 @@ else:
     
     class EtatRecherche:
         def __init__(self):
-            self.activities_done = {}
-            self.activities_working = {}
-            self.activities_to_do = {}
-            self.working_modes = []
-            self.etat_mode = {}
-            self.requetes_echouees = []
-            self.WORKING = 0
-            self.DONE = 1
-            self.FAILED = 2
-            self.WAITING_RESTART = 3
-            self.WAITING_VALIDATION = 4
-            self.started_modes = []
-            self.waiting_modes = []
-            self.cca_occupees = []
-            self.fautifs = {} # (r,m) ceux qui le bloquent
-            self.a_redemarrer = {}
-            self.a_supprimer = []
-            self.bloquants = {} # fautifs mais dans l'autre sens : (r,m) ceux que (r,m) bloque
-            self.waiting_restart = {}    
+            self.activitiesDone = {}
+            self.activitiesWorking = {}
+            self.activitiesToDo = {}
+            self.workingModes = []
+            self.modeState = {}
+            self.failedRequests = []
+            self.WORKING_STATE = 0
+            self.DONE_STATE = 1
+            self.FAILED_STATE = 2
+            self.WAITING_RESTART_STATE = 3
+            self.WAITING_VALIDATION_STATE = 4
+            self.openModes = []
+            self.waitingModes = []
+            self.CCAsUnderComputation = []
+            self.failureResponsibleModes = {} # (r,m) ceux qui le bloquent
+            self.toRestart = {}
+            self.toDelete = []
+            self.blockings = {} # failureResponsibleModes mais dans l'autre sens : (r,m) ceux que (r,m) bloque
+            #self.waitingRestart = {}    
                 
-        def libererCCA(self,id_cca):
-            self.cca_occupees.remove(id_cca)
+        def freeCCA(self,idCCA):
+            self.CCAsUnderComputation.remove(idCCA)
             
-        def notifierEchecRequete(self,r):
-            if r not in self.requetes_echouees:
-                self.requetes_echouees.append(r)
+        def notifyRequestInsertFailure(self,r):
+            if r not in self.failedRequests:
+                self.failedRequests.append(r)
         
-        def mettreEnAttenteValidation(self,mode):
-            self.etat_mode[mode] = self.WAITING_VALIDATION
-            if mode not in self.waiting_modes:
-                self.waiting_modes.append(mode)
+        def setModeWaitingForValidation(self,mode):
+            self.modeState[mode] = self.WAITING_VALIDATION_STATE
+            if mode not in self.waitingModes:
+                self.waitingModes.append(mode)
         
-        # liste_activites : à indiquer comme deja en travail (pour le transfert de mode)
-        def preWorking(self,r,m,liste_activites):
-            for a in liste_activites:
-                self.activities_to_do[(r,m)].remove(a)
-                self.activities_working[(r,m)].append(a)
+        # activitiesList: à indiquer comme deja en travail (pour le transfert de mode)
+        def notifyActivitiesPreWorking(self,r,m,activitiesList):
+            for a in activitiesList:
+                self.activitiesToDo[(r,m)].remove(a)
+                self.activitiesWorking[(r,m)].append(a)
                 
-        def getModesEnAttenteValidation(self):
-            return self.waiting_modes
-        
-        #def getModesEnAttenteRedemarrage(self):
-        #    return self.waiting_restart
-        
-        def mettreEnAttenteRedemarrage(self,mode):
-            self.etat_mode[mode] = self.WAITING_RESTART
+        def getModesWaitingForValidation(self):
+            return self.waitingModes
+
+        def setModeWaitingForRestart(self,mode):
+            self.modeState[mode] = self.WAITING_RESTART_STATE
         
         def getWorkingModes(self):
-            return self.working_modes
-        
-        def chercherElement(self,liste,elmt):
-            for i,x in enumerate(liste):
-                if x==elmt:
-                    return i
-            return -1
-        
-        def activitesAFaire(self,r,m):
-            return self.activities_to_do[(r,m)]!=[]
+            return self.workingModes
+
+        def getActivitiesToPlan(self,r,m):
+            return self.activitiesToDo[(r,m)]!=[]
         
         def getStartedModes(self):
-            return self.started_modes
+            return self.openModes
         
-        def getASupprimer(self):
-            return self.a_supprimer
+        def getActivitiesToDelete(self):
+            return self.toDelete
         
-        def notifierSuppression(self,s,o):
-            self.a_supprimer.remove((s,o))
+        def notifyObservationDeletion(self,s,o):
+            self.toDelete.remove((s,o))
             
         # suppression du mode pour la version avec anticipation
-        def supprimerAnticipation(self,constellation,r,m,grapheDep,liste_a_supprimer=None):
-            self.terminerMode(r,m,False)
-            for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-                if liste_a_supprimer is None or o in liste_a_supprimer:
-                    if((s,o) not in self.a_supprimer):
-                        id_cca = grapheDep.getActiviteCCA(o)
-                        if id_cca in self.cca_occupees:
-                            self.a_supprimer.append((s,o))
+        def deleteModesForAnticipationVersion(self,constellation,r,m,grapheDep,listToDelete=None):
+            self.finishModeScheduling(r,m,False)
+            for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+                if listToDelete is None or o in listToDelete:
+                    if((s,o) not in self.toDelete):
+                        idCCA = grapheDep.getActivityCCA(o)
+                        if idCCA in self.CCAsUnderComputation:
+                            self.toDelete.append((s,o))
             
-        # annule un mode et renvoie la liste de ceux a redemarrer. SUPRESSION DU MODE
-        def echecCertain(self,constellation,r,m,grapheDep,liste_a_supprimer=None):
-            self.supprimerAnticipation(constellation,r,m,grapheDep,liste_a_supprimer)
+        # annule un mode et renvoie la liste de ceux a restart. SUPRESSION DU MODE
+        def notifyCertainFailure(self,constellation,r,m,grapheDep,listToDelete=None):
+            self.deleteModesForAnticipationVersion(constellation,r,m,grapheDep,listToDelete)
             if not config.getOptValue("anticipation"):
                 return []
-            # MAJ des requetes fautives/activites a redemarrer
-            if r in self.fautifs:
-                for fautif in self.fautifs[r]:
-                    self.bloquants[fautif].remove(r)
-                del self.fautifs[r]
-            if (r,m) in self.a_redemarrer:
-                del self.a_redemarrer[(r,m)]
-            if r in self.bloquants:
-                redemarrer = self.bloquants[r].copy()
-                for bloc in self.bloquants[r]:
-                    self.fautifs[bloc].remove(r)
-                del self.bloquants[r]
+            # MAJ des requests fautives/activites a restart
+            if r in self.failureResponsibleModes:
+                for fautif in self.failureResponsibleModes[r]:
+                    self.blockings[fautif].remove(r)
+                del self.failureResponsibleModes[r]
+            if (r,m) in self.toRestart:
+                del self.toRestart[(r,m)]
+            if r in self.blockings:
+                restartList = self.blockings[r].copy()
+                for bloc in self.blockings[r]:
+                    self.failureResponsibleModes[bloc].remove(r)
+                del self.blockings[r]
             else:
                 return []
-            #clean les modes a redemarrer : eviter un 2e appel au redemarrage
-            for r in redemarrer:
-                for fautif in self.fautifs[r]:
-                    self.bloquants[fautif].remove(r)
-                if r in self.fautifs:
-                    del self.fautifs[r]
-            return redemarrer 
+            #clean les modes a restart : eviter un 2e appel au redemarrage
+            for r in restartList:
+                for fautif in self.failureResponsibleModes[r]:
+                    self.blockings[fautif].remove(r)
+                if r in self.failureResponsibleModes:
+                    del self.failureResponsibleModes[r]
+            return restartList 
         
-        # indiquer un echec d'activités causé probablement par des requetes fautives.
-        def echecIncertain(self,r,m,fautifs,activites_a_redemarrer,attenteRedemarrage=True):
-            if len(fautifs)==0:
-                if(attenteRedemarrage):
-                    die(r,m,fautifs,activites_a_redemarrer,attenteRedemarrage)
-                printOpen('Echec du mode',(r,m),'cas 1 (transfert) : redémarrer ',activites_a_redemarrer,c='m')
+        # indiquer un echec d'activités causé probablement par des requests fautives.
+        def notifyUncertainFailure(self,r,m,failureResponsibleModes,activitiesToRestart,waitingForRestart=True):
+            if len(failureResponsibleModes)==0:
+                if(waitingForRestart):
+                    die(r,m,failureResponsibleModes,activitiesToRestart,waitingForRestart)
+                printOpen('Mode insertion failure',(r,m),'case 1 (transfer): restart',activitiesToRestart,c='m')
             else:
-                assert(attenteRedemarrage)
-                printOpen('Echec du mode',(r,m),'cas 2 (mode non prioritaire) : redémarrer',activites_a_redemarrer,c='m')
-            #printColor("Reprogrammer",(r,m),activites_a_redemarrer,c='c')
+                assert(waitingForRestart)
+                printOpen('Mode insertion failure',(r,m),'case 2 (not top-ranked mode): restart scheduling',activitiesToRestart,c='m')
+            #printColor("Reprogrammer",(r,m),activitiesToRestart,c='c')
             assert(config.getOptValue("anticipation"))
-            for requete in fautifs:
-                if r not in self.fautifs:
-                    self.fautifs[r] = []
-                if requete not in self.fautifs[r]:
-                    self.fautifs[r].append(requete)
-                if requete not in self.bloquants:
-                    self.bloquants[requete] = []
-                if r not in self.bloquants[requete]:
-                    self.bloquants[requete].append(r)
-            for a in activites_a_redemarrer:
-                if (r,m) not in self.a_redemarrer:
-                    self.a_redemarrer[(r,m)] = []
-                if a not in self.a_redemarrer[(r,m)]:
-                    self.a_redemarrer[(r,m)].append(a)
-                    self.activities_working[(r,m)].remove(a)
-            self.mettreEnAttenteRedemarrage((r,m))
-            if not attenteRedemarrage:
-                self.redemarrerMode(r,m)
+            for request in failureResponsibleModes:
+                if r not in self.failureResponsibleModes:
+                    self.failureResponsibleModes[r] = []
+                if request not in self.failureResponsibleModes[r]:
+                    self.failureResponsibleModes[r].append(request)
+                if request not in self.blockings:
+                    self.blockings[request] = []
+                if r not in self.blockings[request]:
+                    self.blockings[request].append(r)
+            for a in activitiesToRestart:
+                if (r,m) not in self.toRestart:
+                    self.toRestart[(r,m)] = []
+                if a not in self.toRestart[(r,m)]:
+                    self.toRestart[(r,m)].append(a)
+                    self.activitiesWorking[(r,m)].remove(a)
+            self.setModeWaitingForRestart((r,m))
+            if not waitingForRestart:
+                self.restartModeSchedule(r,m)
             printClose()
             
-        def terminerMode(self,r,m,succes):
-            if succes:
-                self.etat_mode[(r,m)] = self.DONE
+        def finishModeScheduling(self,r,m,sucess):
+            if sucess:
+                self.modeState[(r,m)] = self.DONE_STATE
             else:
-                assert(self.etat_mode[(r,m)]) != self.FAILED
-                self.etat_mode[(r,m)] = self.FAILED
-            if (r,m) in self.activities_done:
-                del self.activities_done[(r,m)]
-            if (r,m) in self.activities_to_do:
-                del self.activities_to_do[(r,m)]
-            if (r,m) in self.activities_working:
-                del self.activities_working[(r,m)]
-            if (r,m) in self.started_modes:
-                self.started_modes.remove((r,m))
-            if (r,m) in self.waiting_modes:
-                self.waiting_modes.remove((r,m))
-            self.working_modes.remove((r,m))
+                assert(self.modeState[(r,m)]) != self.FAILED_STATE
+                self.modeState[(r,m)] = self.FAILED_STATE
+            if (r,m) in self.activitiesDone:
+                del self.activitiesDone[(r,m)]
+            if (r,m) in self.activitiesToDo:
+                del self.activitiesToDo[(r,m)]
+            if (r,m) in self.activitiesWorking:
+                del self.activitiesWorking[(r,m)]
+            if (r,m) in self.openModes:
+                self.openModes.remove((r,m))
+            if (r,m) in self.waitingModes:
+                self.waitingModes.remove((r,m))
+            self.workingModes.remove((r,m))
         
-        def ccaToDo(self,r,m,id_cca,grapheDep):
-            for a in self.activities_to_do[(r,m)]:
-                to_do_cca = grapheDep.getActiviteCCA(a)
-                if to_do_cca == id_cca:
+        def ccaToDo(self,r,m,idCCA,grapheDep):
+            for a in self.activitiesToDo[(r,m)]:
+                to_do_cca = grapheDep.getActivityCCA(a)
+                if to_do_cca == idCCA:
                     return True
             return False
         """
                 features
         """
-        def filtrerModesEnCours(self,parents):
-            return [x for x in parents if x in self.activities_to_do and self.activities_to_do[x]!=[] and self.etat_mode[x] == self.WORKING]
+        def filterModesInScheduling(self,parents):
+            return [x for x in parents if x in self.activitiesToDo and self.activitiesToDo[x]!=[] and self.modeState[x] == self.WORKING_STATE]
         
-        def modesEnCours(self):
-            return len(self.working_modes)>0
+        def getModesInScheduling(self):
+            return len(self.workingModes)>0
          
-        def ccaOccupee(self,id_cca):
-            return id_cca in self.cca_occupees
+        def getCCAsUnderComputation(self,idCCA):
+            return idCCA in self.CCAsUnderComputation
         
-        def getActivitesRestantes(self,r,m):
-            return self.activities_to_do[(r,m)]
+        def getCCAAvailableForComputation(self,r,m,grapheDep):
+            ccas = [grapheDep.getActivityCCA(a) for a in self.activitiesToDo[(r,m)]]
+            freeCCAs = [idCCA for idCCA in ccas if idCCA not in self.CCAsUnderComputation]
+            return freeCCAs
         
-        def getCCALibres(self,r,m,grapheDep):
-            ccas = [grapheDep.getActiviteCCA(a) for a in self.activities_to_do[(r,m)]]
-            ccas_libre = [id_cca for id_cca in ccas if id_cca not in self.cca_occupees]
-            return ccas_libre
-        
-        def getCCA(self,r,m,grapheDep,id_cca):
-            if (r,m) not in self.started_modes:
-                self.started_modes.append((r,m))
-            assert(id_cca not in self.cca_occupees)
-            act = [a for a in self.activities_to_do[(r,m)] if grapheDep.getActiviteCCA(a)==id_cca]
-            supprimerListeElements(self.activities_to_do[(r,m)],act)
-            self.cca_occupees.append(id_cca)
+        def getCCA(self,r,m,grapheDep,idCCA):
+            if (r,m) not in self.openModes:
+                self.openModes.append((r,m))
+            assert(idCCA not in self.CCAsUnderComputation)
+            act = [a for a in self.activitiesToDo[(r,m)] if grapheDep.getActivityCCA(a)==idCCA]
+            supprimerListeElements(self.activitiesToDo[(r,m)],act)
+            self.CCAsUnderComputation.append(idCCA)
             for a in act:
-                self.activities_working[(r,m)].append(a)
+                self.activitiesWorking[(r,m)].append(a)
             return act
             
         # depile les activites et les renvoie
+        """
         def getCCASuivante(self,r,m,grapheDep):
-            assert(len(self.activities_to_do[(r,m)])>0)
-            if (r,m) not in self.started_modes:
-                self.started_modes.append((r,m))
-            ccas = [grapheDep.getActiviteCCA(a) for a in self.activities_to_do[(r,m)]]
-            ccas_libre = [id_cca for id_cca in ccas if id_cca not in self.cca_occupees]
-            id_cca = ccas_libre[0]
-            self.cca_occupees.append(id_cca)
+            assert(len(self.activitiesToDo[(r,m)])>0)
+            if (r,m) not in self.openModes:
+                self.openModes.append((r,m))
+            ccas = [grapheDep.getActivityCCA(a) for a in self.activitiesToDo[(r,m)]]
+            freeCCAs = [idCCA for idCCA in ccas if idCCA not in self.CCAsUnderComputation]
+            idCCA = freeCCAs[0]
+            self.CCAsUnderComputation.append(idCCA)
             liste_a = []
-            act = [a for a in self.activities_to_do[(r,m)] if grapheDep.getActiviteCCA(a)==id_cca]
-            supprimerListeElements(self.activities_to_do[(r,m)],act)
+            act = [a for a in self.activitiesToDo[(r,m)] if grapheDep.getActivityCCA(a)==idCCA]
+            supprimerListeElements(self.activitiesToDo[(r,m)],act)
             for a in act:
-                assert(a not in self.activities_to_do[(r,m)])
+                assert(a not in self.activitiesToDo[(r,m)])
             for a in act:
-                assert (a not in self.activities_to_do[(r,m)])
+                assert (a not in self.activitiesToDo[(r,m)])
             for a in act:
-                self.activities_working[(r,m)].append(a)
+                self.activitiesWorking[(r,m)].append(a)
             return act
-        
-        def changementNomCCA(self,cca_avant,cca_apres):
-            if cca_avant in self.cca_occupees:
-                self.cca_occupees.remove(cca_avant)
-                self.cca_occupees.append(cca_apres)
+        """
+        def renameCCA(self,ccaBefore,ccaAfter):
+            if ccaBefore in self.CCAsUnderComputation:
+                self.CCAsUnderComputation.remove(ccaBefore)
+                self.CCAsUnderComputation.append(ccaAfter)
                 
-        def divisionCCA(self,cca_avant,liste_cca):
-            if cca_avant in self.cca_occupees:
-                self.cca_occupees.remove(cca_avant)
-                for id_cca in liste_cca:
-                    self.cca_occupees.append(id_cca)
+        def splitCCA(self,ccaBefore,ccaList):
+            if ccaBefore in self.CCAsUnderComputation:
+                self.CCAsUnderComputation.remove(ccaBefore)
+                for idCCA in ccaList:
+                    self.CCAsUnderComputation.append(idCCA)
         
-        def requeteEchouee(self,r):
-            return r in self.requetes_echouees
+        def isRequestScheduleFailed(self,r):
+            return r in self.failedRequests
         
-        def getEtat(self,r,m):
-            return self.etat_mode[(r,m)]
+        def getModeState(self,r,m):
+            return self.modeState[(r,m)]
         
         # ajoute un mode directement actif
-        def ajouterModeActif(self,r,m,activites):
-            self.activities_done[(r,m)] = []
-            self.activities_working[(r,m)] = []
-            self.activities_to_do[(r,m)] = activites
-            self.working_modes.append((r,m))
-            self.etat_mode[(r,m)] = self.WORKING
+        def addActiveMode(self,r,m,activites):
+            self.activitiesDone[(r,m)] = []
+            self.activitiesWorking[(r,m)] = []
+            self.activitiesToDo[(r,m)] = activites
+            self.workingModes.append((r,m))
+            self.modeState[(r,m)] = self.WORKING_STATE
         
-        def redemarrerMode(self,r,m):
-            assert(self.etat_mode[(r,m)] in [self.WAITING_RESTART,self.WORKING])
-            #self.activities_done[(r,m)] = []
-            #self.activities_working[(r,m)] = []
-            self.activities_to_do[(r,m)] += self.a_redemarrer[(r,m)]
-            if (r,m) in self.waiting_modes:
-                self.waiting_modes.remove((r,m))
-            self.etat_mode[(r,m)] = self.WORKING
-            del self.a_redemarrer[(r,m)]
-            #printColor('mode redémarré : ',(r,m),'restantes :',self.activities_to_do[(r,m)],'réussies :',self.activities_done[(r,m)],'en cours :',self.activities_working[(r,m)],c='y')
-            #self.working_modes.append((r,m))
+        def restartModeSchedule(self,r,m):
+            assert(self.modeState[(r,m)] in [self.WAITING_RESTART_STATE,self.WORKING_STATE])
+            #self.activitiesDone[(r,m)] = []
+            #self.activitiesWorking[(r,m)] = []
+            self.activitiesToDo[(r,m)] += self.toRestart[(r,m)]
+            if (r,m) in self.waitingModes:
+                self.waitingModes.remove((r,m))
+            self.modeState[(r,m)] = self.WORKING_STATE
+            del self.toRestart[(r,m)]
+            #printColor('mode redémarré : ',(r,m),'restantes :',self.activitiesToDo[(r,m)],'réussies :',self.activitiesDone[(r,m)],'en cours :',self.activitiesWorking[(r,m)],c='y')
+            #self.workingModes.append((r,m))
         
-        # si anticiper_modes : renvoie la liste de REQUETES a redemarrer
-        def validerMode(self,r,m):
-            self.terminerMode(r,m,True)
+        # si anticiper_modes : renvoie la liste de requests a restart
+        def validateMode(self,r,m):
+            self.finishModeScheduling(r,m,True)
             if(config.getOptValue("anticipation")):
-                requetes_a_annuler = []
-                if r in self.bloquants:
-                    for requete in self.bloquants[r]:
-                        self.fautifs[requete].remove(r)
-                        if self.fautifs[requete] == []:
-                            requetes_a_annuler.append(requete)
-                    del self.bloquants[r]
-                return requetes_a_annuler
+                requestsToCancel = []
+                if r in self.blockings:
+                    for requete in self.blockings[r]:
+                        self.failureResponsibleModes[requete].remove(r)
+                        if self.failureResponsibleModes[requete] == []:
+                            requestsToCancel.append(requete)
+                    del self.blockings[r]
+                return requestsToCancel
             else:
                 return []
         
-        def prevaliderActivites(self,activites,r,m):
-            self.started_modes.append((r,m))
-            printColor('Prévalidation des activités',activites,"du mode",(r,m),c='m')
-            supprimerListeElements(self.activities_to_do[(r,m)],activites)
-            if (r,m) not in self.activities_done:
-                self.activities_done[(r,m)] = []
-            self.activities_done[(r,m)] += activites
-            if len(self.activities_to_do[(r,m)])==0 and len(self.activities_working[(r,m)])==0:
+        def prevalidateActivities(self,activites,r,m):
+            self.openModes.append((r,m))
+            printColor('Prevalidation of activities',activites,"from mode",(r,m),c='m')
+            supprimerListeElements(self.activitiesToDo[(r,m)],activites)
+            if (r,m) not in self.activitiesDone:
+                self.activitiesDone[(r,m)] = []
+            self.activitiesDone[(r,m)] += activites
+            if len(self.activitiesToDo[(r,m)])==0 and len(self.activitiesWorking[(r,m)])==0:
                 return True
             else:
                 return False
             
-        def validerActivites(self,activites,r,m):
-            printColor('Validation des activités',activites,"du mode",(r,m),c='c')
-            supprimerListeElements(self.activities_working[(r,m)],activites)
-            if (r,m) not in self.activities_done:
-                self.activities_done[(r,m)] = []
-            self.activities_done[(r,m)] += activites
-            if len(self.activities_to_do[(r,m)])==0 and len(self.activities_working[(r,m)])==0:
+        def validateActivities(self,activites,r,m):
+            printColor('Validation of activities',activites,"from mode",(r,m),c='c')
+            supprimerListeElements(self.activitiesWorking[(r,m)],activites)
+            if (r,m) not in self.activitiesDone:
+                self.activitiesDone[(r,m)] = []
+            self.activitiesDone[(r,m)] += activites
+            if len(self.activitiesToDo[(r,m)])==0 and len(self.activitiesWorking[(r,m)])==0:
                 return True
             else:
                 return False
     
-        def annulerMode(self,r,m):
-            self.terminerMode(r,m,False)
-    
+        def cancelMode(self,r,m):
+            self.finishModeScheduling(r,m,False)
     
     
     class UnitParallelCCASearch(Solver):
-        def __init__(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution):
-            super().__init__(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+        def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim,CCAs,solution):
+            super().__init__(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             # si 1 coeur : slave local
             comm = MPI.COMM_WORLD
             if comm.Get_size()==1:
-                self.localSlave = Slave(constellation,modeleDeTransition)
-            printColor("Durée d'initialisation :",time()-self.start_date,c='b')
+                self.localSlave = Slave(constellation,transitionModel)
+            printColor("Initialization duration:",time()-self.startDate,c='b')
       
-        def _ajouterModeActifEtatRecherche(self,constellation,r,m,prevalidation=[]):
+        def _addActiveModeToResearchState(self,constellation,r,m,prevalidation=[]):
             activites = []
-            for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
+            for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
                 if o not in activites:
                     activites.append(o)
-            self.etat_recherche.ajouterModeActif(r,m,activites) 
+            self.researchState.addActiveMode(r,m,activites) 
             if len(prevalidation)>0:
-                self.etat_recherche.prevaliderActivites(prevalidation,r,m)
-                if not self.etat_recherche.activitesAFaire(r,m):
-                    self.validerMode(constellation,(r,m))
+                self.researchState.prevalidateActivities(prevalidation,r,m)
+                if not self.researchState.getActivitiesToPlan(r,m):
+                    self.validateMode(constellation,(r,m))
     
-        def ajouterModeActif(self,constellation,r,m,prevalidation=[]):
-            self._ajouterModeActifEtatRecherche(constellation,r,m,prevalidation)
+        def addActiveMode(self,constellation,r,m,prevalidation=[]):
+            self._addActiveModeToResearchState(constellation,r,m,prevalidation)
             
-        def presentCCA(self,constellation,r,m,id_cca,grapheActivites):
-            for s in constellation.getRequete(r).getMode(m).getActivites():
-                for o in constellation.getRequete(r).getMode(m).getActivitesSatellite(s):
-                    if grapheActivites.getNoeud(o).getComposanteConnexe()==id_cca:
+        def isPresentCCA(self,constellation,r,m,idCCA,dependencyGraph):
+            for s in constellation.getRequest(r).getMode(m).getActivities():
+                for o in constellation.getRequest(r).getMode(m).getSatellite(s).getActivities():
+                    if dependencyGraph.getVertex(o).getConnectedComponent()==idCCA:
                         return True
             return False
         
-        def getComposanteActivite(self,a):
-            return self.grapheDependances.getActiviteCCA(a)
+        def getConnectedComponentOfActivity(self,a):
+            return self.getGraphComponents().getActivityCCA(a)
         
-        def setCCA(self,constellation,s,seq,id_cca,r,m):
-            s,cca = id_cca
-            self.solution.getSolCCA(s,cca).setSequence(constellation,seq,self.modeleDeTransition)
+        def setCCA(self,constellation,s,seq,idCCA,r,m):
+            s,cca = idCCA
+            self.solution.getSolCCA(s,cca).setSequence(constellation,seq,self.transitionModel)
     
-        def validerActivites(self,constellation,activites,mode):
-            s = constellation.getSatelliteActivite(activites[0])
+        def validateActivities(self,constellation,activites,mode):
+            s = constellation.getSatelliteActivity(activites[0])
             act = {a : None for a in activites}
-            id_cca = self.getComposanteActivite(activites[0])
+            idCCA = self.getConnectedComponentOfActivity(activites[0])
             seq = []
             for i,a in enumerate(activites):
-                cca_a = self.getComposanteActivite(a)
-                if cca_a!=id_cca:
-                    self.setCCA(constellation,s,seq,id_cca,mode[0],mode[1])
-                    id_cca = cca_a
+                cca_a = self.getConnectedComponentOfActivity(a)
+                if cca_a!=idCCA:
+                    self.setCCA(constellation,s,seq,idCCA,mode[0],mode[1])
+                    idCCA = cca_a
                     seq = []
                 seq.append(a)
                 if i==len(activites)-1:
@@ -369,404 +357,371 @@ else:
             =============================================== 
         """
        
-        def validerMode(self,constellation,mode):
-            printOpen("Validation du mode "+str(mode),c='g')
-            start_val = time()
+        def validateMode(self,constellation,mode):
+            printOpen("Validation of mode "+str(mode),c='g')
+            startVal = time()
             # retirer la requete de toutes ses cca
-            for id_cca in self.ccaRequetes[mode[0]]:
-                self.retraitRequeteCCA(id_cca,mode[0])
-            del self.ccaRequetes[mode[0]]
+            for idCCA in self.ccaRequests[mode[0]]:
+                self.removeRequestFromCCA(idCCA,mode[0])
+            del self.ccaRequests[mode[0]]
             
             # retirer les obs de la requete non presentes dans le mode
-            retrait = []
-            for s in constellation.getRequete(mode[0]).getActivites():
-                for o in constellation.getRequete(mode[0]).getActivitesSatellite(s):
-                    presentGraphe = o in self.grapheDependances.getNoeuds() # explications retirees...
-                    nonPresentMode = o not in constellation.getRequete(mode[0]).getMode(mode[1]).getActivitesSatellite(s)
+            removals = []
+            for s in constellation.getRequest(mode[0]).getActivities():
+                for o in constellation.getRequest(mode[0]).getActivitiesBySatellite(s):
+                    presentGraphe = o in self.getGraphComponents().getVertices() # explainations retirees...
+                    nonPresentMode = o not in constellation.getRequest(mode[0]).getMode(mode[1]).getActivitiesBySatellite(s)
                     if presentGraphe and nonPresentMode:
-                        retrait.append(o)
-            del self.modes_courants[mode[0]]
-            self.solution.historique.enregistrerRequeteValidee(constellation,mode[0])
-            requetes_a_annuler = self.etat_recherche.validerMode(mode[0],mode[1])
-            self.solution.ajouterModeRetenu(mode,constellation)
+                        removals.append(o)
+            del self.currentModes[mode[0]]
+            self.solution.history.registerValidatedRequest(constellation,mode[0])
+            requestsToCancel = self.researchState.validateMode(mode[0],mode[1])
+            self.solution.addSelectedMode(mode,constellation)
 
-            if len(requetes_a_annuler)>0:
-                printColor("Annuler les requêtes",requetes_a_annuler,c='m')
-            for r in requetes_a_annuler:
-                mode = (r,self.modes_courants[r])
-                explication = self.explication[mode]
-                self.planifierModeSuivant(constellation,mode,explication)
-                del self.explication[mode]
+            if len(requestsToCancel)>0:
+                printColor("Cancel requests",requestsToCancel,c='m')
+            for r in requestsToCancel:
+                mode = (r,self.currentModes[r])
+                explaination = self.explaination[mode]
+                self.scheduleNextMode(constellation,mode,explaination)
+                del self.explaination[mode]
             printClose()
         
-        def modeCourant(self,mode):
-            r_courant = mode[0]
-            return r_courant in self.modes_courants and mode[1] == self.modes_courants[r_courant]
+        def isModeCurrentlyCandidate(self,mode):
+            rCurrent = mode[0]
+            return rCurrent in self.currentModes and mode[1] == self.currentModes[rCurrent]
         
-        def testSuccesATransferer(self,mode,succes):
-            return config.getOptValue("preval") and not self.modeCourant(mode) and succes
+        def checkPropagateSuccessPrevalidationMode(self,mode,success):
+            return config.getOptValue("preval") and not self.isModeCurrentlyCandidate(mode) and success
         
-        def testEchecsATransferer(self,mode,succes):
-            return not succes and not self.modeCourant(mode)
+        def testPropagateFailurePrevalidationMode(self,mode,success):
+            return not success and not self.isModeCurrentlyCandidate(mode)
             
-        def analyserMessage(self,data,constellation,freeCPUs,mailbox,iteration):
+        def analyzeMessage(self,data,constellation,freeCPUs,mailbox,iteration):
             start = time()
-            self.solution.historique.enregistrerReceptionMessage(data)
+            self.solution.history.registerMessageReceiving(data)
             i = data['source']
             assert(i not in freeCPUs)
             bisect.insort(freeCPUs,i)
             it = data['iteration']
             if iteration==it:
-                cpu_time,cca,succes,mode = data['cpu_time'],data['cca'],data['faisable'],data['mode']
-                explication = data['explication']
+                cpuTime,cca,succes,mode = data['cpu_time'],data['cca'],data['faisable'],data['mode']
+                explaination = data['explaination']
                 seq = cca.getSequence()
-                # si message d'un mode passé : transfert potentiel d'activités validées ou à redemarrer
-                if self.testSuccesATransferer(mode,succes):
-                    mode = self.transfertSuccesActivites(explication,seq,mode)
-                if self.testEchecsATransferer(mode,succes):
-                    retraits = self.supprimerAnciennesActivites(seq) # pour version anticipee de UPCCAS
-                    mode,activites_a_redemarrer = self.transfertEchecActivites(constellation,explication,retraits,mode)
+                # si message d'un mode passé : transfert potentiel d'activités validées ou à restart
+                if self.checkPropagateSuccessPrevalidationMode(mode,succes):
+                    mode = self.transferSuccessActivities(explaination,seq,mode)
+                if self.testPropagateFailurePrevalidationMode(mode,succes):
+                    removals = self.deleteAncientActivities(seq) # pour version anticipee de UPCCAS
+                    mode,activitiesToRestart = self.transferFailedActivities(constellation,explaination,removals,mode)
                 else:
-                    activites_a_redemarrer = []
+                    activitiesToRestart = []
                 # indiquer la cca libre et supprimer les activités n'étant plus à programmer
-                self.libererCCA(seq,explication)
-                if self.modeCourant(mode):
+                self.freeCCA(seq,explaination)
+                if self.isModeCurrentlyCandidate(mode):
                     # traiter le message d'un mode en cours
-                    if succes and not self.etat_recherche.requeteEchouee(mode[0]) and self.etat_recherche.getEtat(mode[0],mode[1])!=self.etat_recherche.FAILED:
-                        stat_validation = time()
+                    if succes and not self.researchState.isRequestScheduleFailed(mode[0]) and self.researchState.getModeState(mode[0],mode[1])!=self.researchState.FAILED_STATE:
+                        statValidation = time()
                         if(len(seq)==0):
                             print(mode)
                         assert(len(seq)>0)
-                        self.validerActivites(constellation,seq,mode)
-                        start_validation = time()
-                        termine = self.etat_recherche.validerActivites(explication,mode[0],mode[1])
-                        self.solution.historique.enregistrerSucces(i,cpu_time)
+                        self.validateActivities(constellation,seq,mode)
+                        startValidation = time()
+                        termine = self.researchState.validateActivities(explaination,mode[0],mode[1])
+                        self.solution.history.registerSuccess(i,cpuTime)
 
                         if termine:
                             if config.getOptValue("anticipation"):
-                                self.validerAnticipation(constellation,mode)
+                                self.notifyAnticipationSuccess(constellation,mode)
                             else:
-                                self.validerMode(constellation,mode)
+                                self.validateMode(constellation,mode)
                     else:
-                        if self.etat_recherche.getEtat(mode[0],mode[1])!=self.etat_recherche.FAILED:
+                        if self.researchState.getModeState(mode[0],mode[1])!=self.researchState.FAILED_STATE:
                             if config.getOptValue("anticipation"):
-                                self.notifierEchecAnticipation(constellation,mode,explication,activites_a_redemarrer)
+                                self.notiyAnticipationFailure(constellation,mode,explaination,activitiesToRestart)
                             else:
-                                self.planifierModeSuivant(constellation,mode,explication)
-                        self.solution.historique.enregistrerEchec(i,cpu_time)
+                                self.scheduleNextMode(constellation,mode,explaination)
+                        self.solution.history.registerFailure(i,cpuTime)
                     #die(self.solution)
                         
-        def analyserResultats(self,constellation,freeCPUs,mailbox,iteration):
+        def analyzeResults(self,constellation,freeCPUs,mailbox,iteration):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
-            start_iteration = time()
+            startIteration = time()
             if comm.Get_size()==1:
-                messages = [self.localSlave.getResultat()]
+                messages = [self.localSlave.getResult()]
             else:
                 messages = mailbox.readMessages()
             for data in messages:
                 if data is not None:
-                    self.analyserMessage(data,constellation,freeCPUs,mailbox,iteration)
+                    self.analyzeMessage(data,constellation,freeCPUs,mailbox,iteration)
                     
-        def supprimerAnciennesActivites(self,seq):
+        def deleteAncientActivities(self,seq):
             supp = []
-            for (s,o) in self.etat_recherche.getASupprimer():
+            for (s,o) in self.researchState.getActivitiesToDelete():
                 if o in seq:
                     seq.remove(o)
                     supp.append(o)
-                    self.etat_recherche.notifierSuppression(s,o)
+                    self.researchState.notifyObservationDeletion(s,o)
             if len(supp)>0:
-                printColor('suppression dans la séquence reçue',supp,"(modes supprimés)",c='r')
+                printColor('deleting activities in received sequence',supp,"(deleted modes)",c='r')
             return supp
         
-        def transfertEchecActivites(self,constellation,explication,retrait,mode):
-            if mode[0] in self.modes_courants:
-                nouveau_mode = self.modes_courants[mode[0]]
-                if sum([a in [x[1] for x in constellation.getRequete(mode[0]).getMode(nouveau_mode).getCouples()] for a in explication])==0:
+        def transferFailedActivities(self,constellation,explaination,removal,mode):
+            if mode[0] in self.currentModes:
+                newMode = self.currentModes[mode[0]]
+                if sum([a in [x[1] for x in constellation.getRequest(mode[0]).getMode(newMode).getPairs()] for a in explaination])==0:
                      return mode,[]
-                if nouveau_mode!=mode[1]:
-                    a_redemarrer = explication.copy()
+                if newMode!=mode[1]:
+                    toRestart = explaination.copy()
                     transfert = []
-                    for a in retrait:
-                        if a in a_redemarrer:
-                            a_redemarrer.remove(a)
-                    printColor('mode',mode,': transfert d\'activités échouées',transfert,'- redémarrer',a_redemarrer,c='r')
-                    return (mode[0],nouveau_mode),a_redemarrer
+                    for a in removal:
+                        if a in toRestart:
+                            toRestart.remove(a)
+                    printColor('mode',str(mode)+': activities transfer failed',transfert,'- restart',toRestart,c='r')
+                    return (mode[0],newMode),toRestart
                 return mode,[]
             return mode,[]
         
         # voir si la planification d'une activité de l'ancien mode peut etre conservée pour le nouveau
-        def transfertSuccesActivites(self,explication,seq,mode):
-            if mode[0] in self.modes_courants:
-                nouveau_mode = self.modes_courants[mode[0]]
-                if nouveau_mode!=mode[1]:
+        def transferSuccessActivities(self,explaination,seq,mode):
+            if mode[0] in self.currentModes:
+                newMode = self.currentModes[mode[0]]
+                if newMode!=mode[1]:
                     find = False
-                    for new in explication:
-                        if new in self.etat_recherche.activities_working[(mode[0],nouveau_mode)]:
+                    for new in explaination:
+                        if new in self.researchState.activitiesWorking[(mode[0],newMode)]:
                             find = True
                             break # suppression deja effectuée au dessus
                     if find:
-                        printColor('mode',mode,": transfert d\'activités réussies",c='g')
-                        return (mode[0],nouveau_mode)
+                        printColor('mode',str(mode)+": activities transfer succeeded",c='g')
+                        return (mode[0],newMode)
                     else:
                         return mode
                 else:
                     return mode
             return mode
                 
-        def validerAnticipation(self,constellation,mode):
-            self.etat_recherche.mettreEnAttenteValidation(mode)
-            self.debloquerModesEnAttente(constellation)    
+        def notifyAnticipationSuccess(self,constellation,mode):
+            self.researchState.setModeWaitingForValidation(mode)
+            self.releaseWaitingModes(constellation)    
         
         # Traiter un echec : considerer un redemarrage si le mode est prioritaire : il n'y a pas de fautif surclassé
-        # activites a redemarrer : car l'echec est acompagnée de la suppression d'autres activités.
+        # activites a restart : car l'echec est acompagnée de la suppression d'autres activités.
         # => on leur redonne alors une chance
-        def notifierEchecAnticipation(self,constellation,mode,explication,activites_a_redemarrer):
-            # I) si on a des activites a redemarrer : on les redemarre et ne cherche pas d'autre mode fautif
-            if len(activites_a_redemarrer): # pas d'attente de redemarrage : on redemarre de suite
-                self.etat_recherche.echecIncertain(mode[0],mode[1],[],activites_a_redemarrer,False)
+        def notiyAnticipationFailure(self,constellation,mode,explaination,activitiesToRestart):
+            # I) si on a des activites a restart : on les redemarre et ne cherche pas d'autre mode fautif
+            if len(activitiesToRestart): # pas d'attente de redemarrage : on redemarre de suite
+                self.researchState.notifyUncertainFailure(mode[0],mode[1],[],activitiesToRestart,False)
                 return
             
-            # II) si on a pas d'activités à redémarrer de l'ancien mode : on cherche des modes fautifs et on redemmarre
+            # II) si on a pas d'activités à redémarrer de l'ancien mode : on cherche des modes failureResponsibleModes et on redemmarre
             # cca des activites calculees
             ccas = []
-            for a in explication:
-                id_cca = self.grapheDependances.getActiviteCCA(a)
-                if id_cca not in ccas:
-                    ccas.append(id_cca)
-            # detection de fautifs : en attente s'il y en a
-            premierPartout = True
-            for id_cca in ccas:
-                if not self.premierCCA(mode[0],id_cca):
-                    premierPartout = False
-                    self.explication[mode] = self.explication.get(mode,[])
-                    for a in explication:
-                        if a not in self.explication[mode]:
-                            self.explication[mode].append(a)
-                    fautifs = self.findFautifsCCA(constellation,mode[0],id_cca)
-                    self.etat_recherche.echecIncertain(mode[0],mode[1],fautifs,explication,True)
+            for a in explaination:
+                idCCA = self.getGraphComponents().getActivityCCA(a)
+                if idCCA not in ccas:
+                    ccas.append(idCCA)
+            # detection de failureResponsibleModes : en attente s'il y en a
+            topRankedOnAllCCAs = True
+            for idCCA in ccas:
+                if not self.premierCCA(mode[0],idCCA):
+                    topRankedOnAllCCAs = False
+                    self.explaination[mode] = self.explaination.get(mode,[])
+                    for a in explaination:
+                        if a not in self.explaination[mode]:
+                            self.explaination[mode].append(a)
+                    failureResponsibleModes = self.findfailureResponsibleModesCCA(constellation,mode[0],idCCA)
+                    self.researchState.notifyUncertainFailure(mode[0],mode[1],failureResponsibleModes,explaination,True)
                     break
                     
             # III) si pas de fautif : annuler car le mode ne passera jamais
-            if premierPartout:
-                self.planifierModeSuivant(constellation,mode,explication)
-                self.explication[mode] = []
+            if topRankedOnAllCCAs:
+                self.scheduleNextMode(constellation,mode,explaination)
+                self.explaination[mode] = []
         
-        def findFautifsCCA(self,constellation,r,id_cca):
-            m = self.modes_courants[r]
-            orderRequest = RelationOrdreRequete(r,m,self.recompenseBruitee(constellation,r,m))
-            return [req.getId() for req in self.requetesCCA[id_cca] if req>orderRequest]
+        def findfailureResponsibleModesCCA(self,constellation,r,idCCA):
+            m = self.currentModes[r]
+            orderRequest = RequestOrdering(r,m,self.noiseUtility(constellation,r,m))
+            return [req.getId() for req in self.requestsCCA[idCCA] if req>orderRequest]
         
-        def premierCCA(self,r,id_cca):
-            return r==max(self.requetesCCA[id_cca]).getId()
+        def premierCCA(self,r,idCCA):
+            return r==max(self.requestsCCA[idCCA]).getId()
         
         # libere la cca et supprimer de la séquence les activités des modes supprimés
-        def libererCCA(self,seq,explication):
+        def freeCCA(self,seq,explaination):
             ccas = []
-            for a in seq+explication:
-                i_cca = self.grapheDependances.getActiviteCCA(a)
-                if i_cca not in ccas:
-                    ccas.append(i_cca)
-                    self.etat_recherche.libererCCA(i_cca)
+            for a in seq+explaination:
+                idCCA = self.getGraphComponents().getActivityCCA(a)
+                if idCCA not in ccas:
+                    ccas.append(idCCA)
+                    self.researchState.freeCCA(idCCA)
                             
-        def debloquerModesEnAttente(self,constellation):
-           
+        def releaseWaitingModes(self,constellation):
             validation = True
             while validation:
                 validation = False
-                for mode_attente in self.etat_recherche.getModesEnAttenteValidation():
-                    if self.requetePrioritaire(mode_attente[0]):
+                for waitingMode in self.researchState.getModesWaitingForValidation():
+                    if self.isRequestPrioritary(waitingMode[0]):
                         validation = True
-                        self.validerMode(constellation,mode_attente)
-                        if not(mode_attente not in self.etat_recherche.getModesEnAttenteValidation()):
-                            die(mode_attente,self.etat_recherche.getModesEnAttenteValidation())
-                        if not(mode_attente not in self.etat_recherche.getWorkingModes()):
-                            die(mode_attente,self.etat_recherche.getWorkingModes())
-                        assert(self.etat_recherche.getEtat(mode_attente[0],mode_attente[1])==self.etat_recherche.DONE)
+                        self.validateMode(constellation,waitingMode)
+                        if not(waitingMode not in self.researchState.getModesWaitingForValidation()):
+                            die(waitingMode,self.researchState.getModesWaitingForValidation())
+                        if not(waitingMode not in self.researchState.getWorkingModes()):
+                            die(waitingMode,self.researchState.getWorkingModes())
+                        assert(self.researchState.getModeState(waitingMode[0],waitingMode[1])==self.researchState.DONE_STATE)
                         break
              
         def intersectionActivites(self,constellation,r):
-            nouveau_mode = self.modes_courants.get(r)
-            ancien_mode = nouveau_mode - 1
-            act_ancien = [x[1] for x in constellation.getRequete(r).getMode(ancien_mode).getCouples()]
-            if nouveau_mode is None:
-                return act_ancien,[],[]
-            act_nouveau_mode = [x[1] for x in constellation.getRequete(r).getMode(nouveau_mode).getCouples()]
+            newMode = self.currentModes.get(r)
+            previousMode = newMode - 1
+            activitiesOldMode = [x[1] for x in constellation.getRequest(r).getMode(previousMode).getPairs()]
+            if newMode is None:
+                return activitiesOldMode,[],[]
+            activitiesNewMode = [x[1] for x in constellation.getRequest(r).getMode(newMode).getPairs()]
             
-            retrait = []
-            prevalider = []
-            intersection_working = []
-            for o in act_nouveau_mode:
-                if o in act_ancien and o in self.etat_recherche.activities_done.get((r,ancien_mode),[]):
+            removal = []
+            activitiesToPrevalidate = []
+            intersectionWorkingActivities = []
+            for o in activitiesNewMode:
+                if o in activitiesOldMode and o in self.researchState.activitiesDone.get((r,previousMode),[]):
                     if config.getOptValue("preval") or config.getOptValue("anticipation"):
-                        prevalider.append(o)
+                        activitiesToPrevalidate.append(o)
                     else:
-                        retrait.append(o)
-                elif o in self.etat_recherche.activities_working.get((r,ancien_mode),[]):
+                        removal.append(o)
+                elif o in self.researchState.activitiesWorking.get((r,previousMode),[]):
                     if config.getOptValue("preval") or config.getOptValue("anticipation"):
-                        intersection_working.append(o)
-            for o in act_ancien:
-                if o not in act_nouveau_mode:
-                    retrait.append(o)
-            return retrait,prevalider,intersection_working
+                        intersectionWorkingActivities.append(o)
+            for o in activitiesOldMode:
+                if o not in activitiesNewMode:
+                    removal.append(o)
+            return removal,activitiesToPrevalidate,intersectionWorkingActivities
         
-        def planifierModeSuivant(self,constellation,mode,explication):
-            exp_cca = [(o,self.grapheDependances.getActiviteCCA(o)) for o in explication]
-            printOpen('Echec du mode',mode,'cas 3 : annuler. cause : [activité, (sat_cca,n_cca) ... ] = ',exp_cca,c='r')
-            self.solution.historique.enregistrerEchecMode(constellation,mode[0])          
-            for id_cca in self.ccaRequetes[mode[0]]:
-                self.retraitRequeteCCA(id_cca,mode[0])
-            modes_a_redemarrer = self.defilerEtatRequete(constellation,mode,explication,self.grapheDependances) # MAJ etat recherche MAJ graphe (pending)
-            self.insererRequeteCCA(constellation,mode[0])
-            if len(modes_a_redemarrer)>0:
-                printColor('Redémarrer les requêtes',modes_a_redemarrer,c='m')
+        def scheduleNextMode(self,constellation,mode,explaination):
+            exp_cca = [(o,self.getGraphComponents().getActivityCCA(o)) for o in explaination]
+            printOpen('Mode insertion failure',mode,'case 3: cancel. cause : [activity, (sat_cca,n_cca) ... ] = ',exp_cca,c='r')
+            self.solution.history.registerFailure(constellation,mode[0])          
+            for idCCA in self.ccaRequests[mode[0]]:
+                self.removeRequestFromCCA(idCCA,mode[0])
+            modesToRestart = self.moveOnRequestState(constellation,mode,explaination,self.getGraphComponents()) # MAJ etat recherche MAJ graphe (pending)
+            self.insertRequestInCCA(constellation,mode[0])
+            if len(modesToRestart)>0:
+                printColor('Restart scheduling for requests',modesToRestart,c='m')
             if config.getOptValue("anticipation"):
-                for mode in modes_a_redemarrer:
-                    self.etat_recherche.redemarrerMode(mode,self.modes_courants[mode])
+                for mode in modesToRestart:
+                    self.researchState.restartModeSchedule(mode,self.currentModes[mode])
             printClose()
     
-        def insererRequeteCCA(self,constellation,r):
-            if r in self.modes_courants:
-                requete = constellation.getRequete(r)
-                m = self.modes_courants[r]
-                orderRequest = RelationOrdreRequete(r,m,self.recompenseBruitee(constellation,r,m))
+        def insertRequestInCCA(self,constellation,r):
+            if r in self.currentModes:
+                requete = constellation.getRequest(r)
+                m = self.currentModes[r]
+                orderRequest = RequestOrdering(r,m,self.noiseUtility(constellation,r,m))
                 ccas = []
-                for (s,o) in requete.getCouples():
+                for (s,o) in requete.getPairs():
                     try:
-                        id_cca = self.grapheDependances.getActiviteCCA(o)
-                        if id_cca not in ccas:
-                            ccas.append(id_cca)
+                        idCCA = self.getGraphComponents().getActivityCCA(o)
+                        if idCCA not in ccas:
+                            ccas.append(idCCA)
                     except:
                         pass
-                self.ccaRequetes[r] = ccas
-                #prio = constellation.getRequete(r).getPriorite()
-                #rec = self.recompenseBruitee(constellation,r,self.modes_courants[r])
-                for id_cca in ccas:
-                    if id_cca not in self.requetesCCA:
-                        self.requetesCCA[id_cca] = []
-                    reverse_insort(self.requetesCCA[id_cca],orderRequest)
+                self.ccaRequests[r] = ccas
+                #prio = constellation.getRequest(r).getPriorite()
+                #rec = self.noiseUtility(constellation,r,self.currentModes[r])
+                for idCCA in ccas:
+                    if idCCA not in self.requestsCCA:
+                        self.requestsCCA[idCCA] = []
+                    reverse_insort(self.requestsCCA[idCCA],orderRequest)
         
-        def requetePrioritaireCCA(self,r,id_cca):
-            return r==max(self.requetesCCA[id_cca]).getId()
+        def isRequestPrioritaryCCA(self,r,idCCA):
+            return r==max(self.requestsCCA[idCCA]).getId()
         
-        def requetePrioritaire(self,r):
-            for id_cca in self.ccaRequetes[r]:
-                if not self.requetePrioritaireCCA(r,id_cca):
+        def isRequestPrioritary(self,r):
+            for idCCA in self.ccaRequests[r]:
+                if not self.isRequestPrioritaryCCA(r,idCCA):
                     return False
             return True
             
-        def extraireActivites(self,constellation,r,m):
+        def extractActivitiesFromMode(self,constellation,r,m):
             act = []
-            for (s,o,d) in constellation.getRequete(r).getMode(m).getCouples():
+            for (s,o,d) in constellation.getRequest(r).getMode(m).getPairs():
                 if o not in act:
                     act.append(o)
                 if d not in act:
                     act.append(d)
             return act        
-    
-        # inutile pour l'instant
-        def tenterCorriger(self,constellation,mode):
-            return False
-                                   
-        def ajouterExplication(self,explication):
-            for ex in explication:
-                if explication not in self.explications:
-                    self.explications.append(ex)
+               
+        def registerExplaination(self,explaination):
+            for ex in explaination:
+                if explaination not in self.explainations:
+                    self.explainations.append(ex)
                 
-        def explicationsModes(self,CCMs):
-            res = []
-            for (activites_solution,activites_mode) in self.explications:
-                if self.contient(activites_solution,CCMs):
-                    res.append(activites_mode)
-            return res
-         
-        def nettoyerSolution(self,constellation):
-            for mode in self.etat_recherche.getWorkingModes():
-                self.annulerModeSolution(constellation,mode)
-        
-        def verifCCA(self,constellation):
-            for s in self.solution.getSolCCAs():
-                for s,cca in  self.solution.getSolCCAs()[s]:
-                    for a in self.solution.getSolCCA(s,cca).getSequence():
-                        assert(self.grapheDependances.grapheActivites.getNoeud(a).getComposanteConnexe()==(s,cca))
-                        
-            for a in self.grapheDependances.grapheActivites.getNoeuds():
-                s,cca = self.grapheDependances.grapheActivites.getNoeud(a).getComposanteConnexe()
-                for c in self.solution.getSolCCAs()[s]:
-                    if cca!=c:
-                        assert(a not in self.solution.getSolCCA(s,c).getSequence())
-    
+        def cleanUpSolution(self,constellation):
+            for mode in self.researchState.getWorkingModes():
+                self.cancelModeSolution(constellation,mode)
+           
         def initIteration(self,constellation,noise):
             self.resetNoise(constellation,noise)
-            self.etat_recherche = EtatRecherche()
+            self.researchState = EtatRecherche()
             # ajouter modes actifs
-            self.explication = {}
-            self.redemarrer(constellation)
-            self.initRequetes(constellation,noise,conserve_old=False)
-            update_modes = []
-            for r in constellation.getRequetes():
-                m = constellation.getRequete(r).getModeCourant(constellation).getId()
-                update_modes.append((r,m))
-            for (r,m) in update_modes:
-                self.ajouterModeActif(constellation,r,m) # etat recherche + CCA sol
-            # stoquage etat des requetes dans les CCA
-            self.requetesPresentesCCA(constellation) # cca => requetes,req => ccas 
+            self.explaination = {}
+            self.restart(constellation)
+            self.initRequests(constellation,noise,conserveOld=False)
+            updateModes = []
+            for r in constellation.getRequests():
+                m = constellation.getRequest(r).getCurrentMode(constellation).getId()
+                updateModes.append((r,m))
+            for (r,m) in updateModes:
+                self.addActiveMode(constellation,r,m) # etat recherche + CCA sol
+            # stoquage etat des requests dans les CCA
+            self.updateRequestsAndCCAMappings(constellation) # cca => requests,req => ccas 
             
-
-        def resoudre(self,constellation,mailbox):
-            temps = time()
+        def resolve(self,constellation,mailbox):
+            timeVar = time()
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             size = comm.Get_size()
-            temps = time()
+            timeVar = time()
             if size==1:
                 freeCPUs = [0] # un seul coeur => slave local
             else:
                 freeCPUs = list(range(1,size))
-            last_record = 0
-            super_iter = 0
-            while time()-self.start_date<config.getOptValue("time"):
-                sigma = config.getOptValue("noise")*super_iter
+            lastRecord = 0
+            superIter = 0
+            while time()-self.startDate<config.getOptValue("time"):
+                sigma = config.getOptValue("noise")*superIter
                 self.initIteration(constellation,sigma)
-                while time()-self.start_date<config.getOptValue("time") and self.etat_recherche.modesEnCours():
+                while time()-self.startDate<config.getOptValue("time") and self.researchState.getModesInScheduling():
                     start_it = time()
-                    self.envoyerTache(constellation,freeCPUs,mailbox,super_iter)
-                    self.analyserResultats(constellation,freeCPUs,mailbox,super_iter)
+                    self.sendTask(constellation,freeCPUs,mailbox,superIter)
+                    self.analyzeResults(constellation,freeCPUs,mailbox,superIter)
 
                     step()
-                    printColor(self.etat_recherche.getWorkingModes(),c='r')
-                    printColor(self.etat_recherche.getModesEnAttenteValidation(),c='y')
+                    printColor(self.researchState.getWorkingModes(),c='r')
+                    printColor(self.researchState.getModesWaitingForValidation(),c='y')
                     
                     if config.getOptValue("verif"):
-                        self.verifierCCA(constellation)
+                        self.verifyCCA(constellation)
                     """
                         stockage de la solution courante
                     """
-                    if last_record<( (time()-self.start_date)//10):
-                        last_record = (time()-self.start_date)//10
-                        self.notifierSansEvenement(constellation)
-                        self.afficherInfo(time(),self.start_date,constellation,title="INFORMATION")
-                self.notifierFinIteration(constellation)
-                self.afficherInfo(time(),self.start_date,constellation,title="FIN ITERATION "+str(super_iter),color='r')
-                super_iter += 1
-                temps = time()
-                if config.getOptValue("noise") == 0:# or self.gapRecompense(constellation) and self.gapTemps(constellation):
+                    if lastRecord<( (time()-self.startDate)//10):
+                        lastRecord = (time()-self.startDate)//10
+                        self.notifyNoEvent(constellation)
+                        self.displayInformation(time(),self.startDate,constellation,title="INFORMATION")
+                self.notifyEndIteration(constellation)
+                self.displayInformation(time(),self.startDate,constellation,title="END ITERATION "+str(superIter),color='r')
+                superIter += 1
+                timeVar = time()
+                if config.getOptValue("noise") == 0:
                     break
             
+            self.cleanUpSolution(constellation)
+            self.terminateProcesses()
+            self.notifyEndExecution(constellation)
+            self.displayInformation(time(),self.startDate,constellation,title='FIN',color='y')
         
-            # attendre ce qu'il reste
-            #for x in range(len([i for i in range(1,comm.Get_size()) if i not in freeCPUs])):
-                #data = comm.recv()
-                #fself.analyserMessage(data,constellation,freeCPUs,mailbox)
-            
-            
-            self.nettoyerSolution(constellation)
-            #self.verifierSolution(constellation)
-            self.terminerProcessus()
-            self.notifierFinExecution(constellation)
-            self.afficherInfo(time(),self.start_date,constellation,title='FIN',color='y')
-        
-        def terminerProcessus(self):
+        def terminateProcesses(self):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             size = comm.Get_size()
@@ -774,88 +729,86 @@ else:
                 if i!=0:
                     comm.send({'fin':True},dest=i)
         
-        def requetesPresentesCCA(self,constellation):
-            self.requetesCCA,self.ccaRequetes = {},{}
+        def updateRequestsAndCCAMappings(self,constellation):
+            self.requestsCCA,self.ccaRequests = {},{}
             req,ccas = {},{}
-            for r in constellation.getRequetes():
+            for r in constellation.getRequests():
                 req[r] = []
-                m = self.modes_courants[r]
-                orderRequest = RelationOrdreRequete(r,m,self.recompenseBruitee(constellation,r,m))
-                for (s,o) in constellation.getRequete(r).getCouples():
-                    id_cca = self.grapheDependances.getActiviteCCA(o)
-                    if id_cca not in ccas:
-                        ccas[id_cca] = []
-                    if id_cca not in req[r]:
-                        req[r].append(id_cca)
-                        reverse_insort(ccas[id_cca],orderRequest)
-            self.requetesCCA = ccas
-            self.ccaRequetes = req
+                m = self.currentModes[r]
+                orderRequest = RequestOrdering(r,m,self.noiseUtility(constellation,r,m))
+                for (s,o) in constellation.getRequest(r).getPairs():
+                    idCCA = self.getGraphComponents().getActivityCCA(o)
+                    if idCCA not in ccas:
+                        ccas[idCCA] = []
+                    if idCCA not in req[r]:
+                        req[r].append(idCCA)
+                        reverse_insort(ccas[idCCA],orderRequest)
+            self.requestsCCA = ccas
+            self.ccaRequests = req
         
-        def ccaLibres(self):
-            requetes = {} # cca ou il y a du travail
-            ccas_libres = []
-            for id_cca in self.requetesCCA:
-                rec_max = max(self.requetesCCA[id_cca]).getRecompense()
-                r_max = [r.getId() for r in self.requetesCCA[id_cca] if r.getRecompense()==rec_max or r.getId()==-1]
+        def getFreeRequetsAndCCAsPairs(self):
+            requests = {} # cca ou il y a du travail
+            freeCCAss = []
+            for idCCA in self.requestsCCA:
+                rec_max = max(self.requestsCCA[idCCA]).getUtility()
+                r_max = [r.getId() for r in self.requestsCCA[idCCA] if r.getUtility()==rec_max or r.getId()==-1]
                 for r in r_max:
-                    m = self.modes_courants[r]
-                    if r not in requetes:
-                        requetes[r] = self.etat_recherche.getCCALibres(r,m,self.grapheDependances)
-                    if not self.etat_recherche.ccaOccupee(id_cca):
-                        if id_cca not in ccas_libres:
-                            ccas_libres.append(id_cca)
-            return requetes,ccas_libres
+                    m = self.currentModes[r]
+                    if r not in requests:
+                        requests[r] = self.researchState.getCCAAvailableForComputation(r,m,self.getGraphComponents())
+                    if not self.researchState.getCCAsUnderComputation(idCCA):
+                        if idCCA not in freeCCAss:
+                            freeCCAss.append(idCCA)
+            return requests,freeCCAss
         
         # renvoie les (r,cca) tels que r est premiere sur sa CCA et (r,cca) n'est pas encore calculée
-        def candidatsTop(self,requetes,ccas_libres):
-            candidats_top = []
-            for id_cca in ccas_libres:
-                if len(self.requetesCCA[id_cca])>0:
-                    rmax = max(self.requetesCCA[id_cca])
-                    assert(self.requetePrioritaireCCA(rmax.getId(),id_cca))
-                    if id_cca in requetes[rmax.getId()]:
-                        candidats_top.append((0,rmax,id_cca))
-            return candidats_top
+        def candidatsTop(self,requests,freeCCAss):
+            topCandidates = []
+            for idCCA in freeCCAss:
+                if len(self.requestsCCA[idCCA])>0:
+                    rmax = max(self.requestsCCA[idCCA])
+                    assert(self.isRequestPrioritaryCCA(rmax.getId(),idCCA))
+                    if idCCA in requests[rmax.getId()]:
+                        topCandidates.append((0,rmax,idCCA))
+            return topCandidates
         
-        # les candidats de niveaux inferieurs
-        def candidatsQueue(self,requetes,ccas_libres):
-            candidats_queue = []
-            for id_cca in ccas_libres:
-                candidats = sorted(self.requetesCCA[id_cca],reverse=True)
-                for niveau,req in enumerate(candidats):
+        # les candidats de levelx inferieurs
+        def getCandidatesQueue(self,requests,freeCCAss):
+            candidatesQueue = []
+            for idCCA in freeCCAss:
+                candidats = sorted(self.requestsCCA[idCCA],reverse=True)
+                for level,req in enumerate(candidats):
                     r = req.getId()
                     m = req.getIdMode()
-                    if id_cca in self.etat_recherche.getCCALibres(r,m,self.grapheDependances):
-                        candidats_queue.append((niveau,req,id_cca))
+                    if idCCA in self.researchState.getCCAAvailableForComputation(r,m,self.getGraphComponents()):
+                        candidatesQueue.append((level,req,idCCA))
                         break
-            return candidats_queue
+            return candidatesQueue
         
-        def choisirCandidatQueue(self,candidats_queue,constellation):
-            if len(candidats_queue)>0:
-                res = max(candidats_queue,key=lambda req_info:(-req_info[0],req_info[1])) # min niveau,max prio,max rec
+        def pickCandidateInQueue(self,candidatesQueue,constellation):
+            if len(candidatesQueue)>0:
+                res = max(candidatesQueue,key=lambda requestInfo:(-requestInfo[0],requestInfo[1])) # min level,max prio,max rec
                 return res
             else:
                 return None
             
-        def choisirCandidatTop(self,candidats_top,constellation):
-            if len(candidats_top)>0: # candidats top = liste de (niveau,(r,m),cca)
-                res = max(candidats_top,key=itemgetter(1)) # item[1] => la classe de relation d'ordre
+        def pickTopCandidate(self,topCandidates,constellation):
+            if len(topCandidates)>0: # candidats top = liste de (level,(r,m),cca)
+                res = max(topCandidates,key=itemgetter(1)) # item[1] => la classe de relation d'ordre
                 return res
             else:
                 return None
             
-        def choisirMode(self,constellation):
-            #printColor([(cca,self.requetesCCA[cca][:3]) for cca in self.requetesCCA],c='y')
-        
+        def pickMode(self,constellation):
             start = time()
-            # deteminer les ccas libres et les cca libres sur lesquelles les requetes ont du travail
-            requetes,cca_libres = self.ccaLibres()
-            #printColor(requetes,cca_libres,c='b')
+            # deteminer les ccas libres et les cca libres sur lesquelles les requests ont du travail
+            requests,freeCCAs = self.getFreeRequetsAndCCAsPairs()
+            #printColor(requests,freeCCAs,c='b')
             start = time()
-            candidats_top = self.candidatsTop(requetes,cca_libres)
-            #printColor(candidats_top,c='r')
-            #printColor(self.etat_recherche.cca_occupees,c='m')
-            res = self.choisirCandidatTop(candidats_top,constellation)
+            topCandidates = self.candidatsTop(requests,freeCCAs)
+            #printColor(topCandidates,c='r')
+            #printColor(self.researchState.CCAsUnderComputation,c='m')
+            res = self.pickTopCandidate(topCandidates,constellation)
                
             if res is not None:
                 return res
@@ -863,38 +816,30 @@ else:
             if not config.getOptValue("anticipation"):
                 return None
             else:
-                candidats_queue = self.candidatsQueue(requetes,cca_libres)
-                return self.choisirCandidatQueue(candidats_queue,constellation)
+                candidatesQueue = self.getCandidatesQueue(requests,freeCCAs)
+                return self.pickCandidateInQueue(candidatesQueue,constellation)
         
-        def getModeActivites(self,constellation,r,m):
-            activites = []
-            for s in self.constellation.getRequete(r).getMode(m).getActivites():
-                for o in self.constellation.getRequete(r).getMode(m).getActivites()[s]:
-                    if o not in activites:
-                        activites.append(o)
-            return activites
-        
-        def processusDispo(self,freeCPUs):
+        def existsAvailableProcesses(self,freeCPUs):
             return freeCPUs!=[]
         
-        def choisirCPU(self,freeCPUs):
+        def pickAvailableProcess(self,freeCPUs):
             return freeCPUs.pop()
         
-        def envoyerTache(self,constellation,freeCPUs,mailbox,iteration):
-            while self.processusDispo(freeCPUs) and self.etat_recherche.modesEnCours():
-                res = self.choisirMode(constellation)
+        def sendTask(self,constellation,freeCPUs,mailbox,iteration):
+            while self.existsAvailableProcesses(freeCPUs) and self.researchState.getModesInScheduling():
+                res = self.pickMode(constellation)
                 if res is not None:
-                    niveau,req_order,id_cca = res
-                    mode = (req_order.getId(),req_order.getIdMode())
-                    cpu = self.choisirCPU(freeCPUs)
-                    activites = self.etat_recherche.getCCA(mode[0],mode[1],self.grapheDependances,id_cca)
+                    level,RequestOrdering,idCCA = res
+                    mode = (RequestOrdering.getId(),RequestOrdering.getIdMode())
+                    cpu = self.pickAvailableProcess(freeCPUs)
+                    activites = self.researchState.getCCA(mode[0],mode[1],self.getGraphComponents(),idCCA)
                     if(len(activites)==0):
-                        die(mode[0],mode[1],self.grapheDependances,id_cca)
+                        die(mode[0],mode[1],self.getGraphComponents(),idCCA)
                     assert(len(activites)>0)
-                    id_cca = self.grapheDependances.getActiviteCCA(activites[0])
-                    cca = self.getSolCCA(id_cca[0],id_cca[1])
-                    niveau_msg = config.getOptValue("anticipation")*("rang : "+str(niveau))
-                    printColor("mode choisi :",str(mode),"sur la CCA",str(id_cca)+". Activités : "+str(activites),niveau_msg,c='b')
+                    idCCA = self.getGraphComponents().getActivityCCA(activites[0])
+                    cca = self.getSolCCA(idCCA[0],idCCA[1])
+                    messageLevel = config.getOptValue("anticipation")*("rank: "+str(level))
+                    printColor("picked mode:",str(mode),"on CCA",str(idCCA)+". Activities: "+str(activites),messageLevel,c='b')
                 
                     for a in activites:
                         if a in cca.sequence:
@@ -903,98 +848,96 @@ else:
                     # demander au slave d'inserer les activites dans la cca
                     if cpu==0:
                         data = {'iteration':iteration,'mode':mode,'cca':deepcopy(cca),'source':0,'activites':activites,'time':time()}
-                        self.localSlave.insererActivites(constellation,data,self.modeleDeTransition)
+                        self.localSlave.insertActivities(constellation,data,self.transitionModel)
                     else:
-                        mailbox.demanderTache(mode,activites,cca,cpu,iteration)
-                    #self.solution.historique.enregistrerEnvoi(cpu)
+                        mailbox.askForSchedulingTask(mode,activites,cca,cpu,iteration)
                 else:
-                    #printColor(len(freeCPUs),c='m')
                     break
         
-        def annulerModeSolution(self,constellation,mode):
+        def cancelModeSolution(self,constellation,mode):
             r,m = mode
             cca = []
-            for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-                id_cca = self.grapheDependances.getActiviteCCA(o)
-                if id_cca not in cca:
-                    cca.append(id_cca)
+            for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+                idCCA = self.getGraphComponents().getActivityCCA(o)
+                if idCCA not in cca:
+                    cca.append(idCCA)
             for (s,cca_a) in cca:
-                self.getSolCCA(s,cca_a).annulerMode(constellation,r,m,self.modeleDeTransition)
+                self.getSolCCA(s,cca_a).cancelMode(constellation,r,m,self.transitionModel)
             
-        # si retrait est None on retire toutes les activites du mode. Sinon on retire la liste 'retrait'
-        def retirerModeSolution(self,constellation,mode,retrait=None):
+        # si removal est None on retire toutes les activites du mode. Sinon on retire la liste 'removal'
+        def removeModeFromSolution(self,constellation,mode,removal=None):
             r,m = mode
             cca = {}                     
-            for (s,o) in constellation.getRequete(r).getMode(m).getCouples():
-                if retrait is None or o in retrait:
-                    id_cca = self.grapheDependances.getActiviteCCA(o)
-                    if id_cca not in cca:
-                        cca[id_cca] = []
-                    if o in self.getSolCCA(id_cca[0],id_cca[1]).getSequence():
-                        cca[id_cca].append(o)
+            for (s,o) in constellation.getRequest(r).getMode(m).getPairs():
+                if removal is None or o in removal:
+                    idCCA = self.getGraphComponents().getActivityCCA(o)
+                    if idCCA not in cca:
+                        cca[idCCA] = []
+                    if o in self.getSolCCA(idCCA[0],idCCA[1]).getSequence():
+                        cca[idCCA].append(o)
             for (s,cca_a) in cca:
-                self.getSolCCA(s,cca_a).retirerListeActivites(constellation,cca[(s,cca_a)],self.modeleDeTransition)
+                self.getSolCCA(s,cca_a).removeActivityList(constellation,cca[(s,cca_a)],self.transitionModel)
                                    
         # active le mode pending suivant s'il y en a un et rajoute un pending mode s'il y en a encore
-        def defilerEtatRequete(self,constellation,mode,explication,grapheDep):
+        def moveOnRequestState(self,constellation,mode,explaination,grapheDep):
             r,m = mode
-            res = constellation.getRequete(r).getModeSuivant(explication,constellation)
-            modes_a_redemarrer = []
+            res = constellation.getRequest(r).getNextMode(explaination,constellation)
+            modesToRestart = []
             if res is not None:
                 m = res.getId()
-                self.modes_courants[r] = m
-                # retrait : les activities presentes uniquement dans l'ancien mode. Les retirer
-                # prevalider : presentes dans les deux modes et deja validées dans l'ancien => Prevalider dans le nouveau mode
-                retrait,prevalider,intersection_working = self.intersectionActivites(constellation,r)              
-                #printColor(retrait,prevalider,intersection_working,c='m')
-                if self.etat_recherche.getEtat(r,m-1)!=self.etat_recherche.FAILED:
-                    modes_a_redemarrer = self.etat_recherche.echecCertain(constellation,r,m-1,grapheDep,retrait)
+                self.currentModes[r] = m
+                # removal : les activities presentes uniquement dans l'ancien mode. Les retirer
+                # activitiesToPrevalidate : presentes dans les deux modes et deja validées dans l'ancien => activitiesToPrevalidate dans le nouveau mode
+                removal,activitiesToPrevalidate,intersectionWorkingActivities = self.intersectionActivites(constellation,r)              
+                #printColor(removal,activitiesToPrevalidate,intersectionWorkingActivities,c='m')
+                if self.researchState.getModeState(r,m-1)!=self.researchState.FAILED_STATE:
+                    modesToRestart = self.researchState.notifyCertainFailure(constellation,r,m-1,grapheDep,removal)
                 else:
-                    modes_a_redemarrer  = []
-                self.retirerModeSolution(constellation,mode,retrait) # retirer de la solution
+                    modesToRestart  = []
+                self.removeModeFromSolution(constellation,mode,removal) # retirer de la solution
             else:
-                modes_a_redemarrer = self.etat_recherche.echecCertain(constellation,r,m,grapheDep)
-                self.retirerModeSolution(constellation,mode) # retirer de la solution
+                modesToRestart = self.researchState.notifyCertainFailure(constellation,r,m,grapheDep)
+                self.removeModeFromSolution(constellation,mode) # retirer de la solution
             if res is not None:
-                self.ajouterModeActif(constellation,r,m,prevalider) # prevalidation de l'intersection deja validee
-                self.etat_recherche.preWorking(r,m,intersection_working)
+                self.addActiveMode(constellation,r,m,activitiesToPrevalidate) # prevalidation de l'intersection deja validee
+                self.researchState.notifyActivitiesPreWorking(r,m,intersectionWorkingActivities)
             else:
-                printColor('requete',r,'('+str(len(constellation.getRequete(r).getCouples())) +' activités) n\'a plus de modes',c='m')
-                self.etat_recherche.notifierEchecRequete(r)
-                self.supprimerRequete(constellation,r)
-            return modes_a_redemarrer
+                printColor('request',r,'('+str(len(constellation.getRequest(r).getPairs())) +' activities) has nor more mode',c='m')
+                self.researchState.notifyRequestInsertFailure(r)
+                self.deleteRequest(constellation,r)
+            return modesToRestart
                 
-        def retraitRequeteCCA(self,id_cca,r):
-            if id_cca in self.requetesCCA:
-                for i,x in enumerate(self.requetesCCA[id_cca]):
+        def removeRequestFromCCA(self,idCCA,r):
+            if idCCA in self.requestsCCA:
+                for i,x in enumerate(self.requestsCCA[idCCA]):
                     if x.getId()==r:
-                        self.requetesCCA[id_cca].pop(i)
-                        if self.requetesCCA[id_cca]==[]:
-                            del self.requetesCCA[id_cca]
+                        self.requestsCCA[idCCA].pop(i)
+                        if self.requestsCCA[idCCA]==[]:
+                            del self.requestsCCA[idCCA]
     
-    class Processus:
+    class Process:
         def __init__(self,role):
             self.role = role
         
-        def resoudre(self,constellation):
+        def resolve(self,constellation):
             pass
         
-    class Master(Processus):
+    class Master(Process):
         def __init__(self):
             super().__init__("master")
 
-        def resoudre(self,constellation,start_date,mailbox,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution):
+        def resolve(self,constellation,startDate,mailbox,transitionModel,dt_construction_transition,tlim,CCAs,solution):
             # iterer insertion-réparation
-            self.initSolution(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution)
-            self.solution.resoudre(constellation,mailbox)
-            self.solution.construirePlan(constellation)
+            self.initSolution(constellation,startDate,transitionModel,dt_construction_transition,tlim,CCAs,solution)
+            self.solution.resolve(constellation,mailbox)
+            self.solution.buildPlan(constellation)
     
-        def meilleureSolution(self):
-            return self.solution.meilleureSolution()
+        def getBestSolution(self):
+            return self.solution.getBestSolution()
         
-        def releverObjectif(self):
+        def registerObjective(self):
             rel = config.glob.releves
-            sol = self.meilleureSolution()
+            sol = self.getBestSolution()
             points = []
             i_rel = 0
             for i,(t,obj,modes) in enumerate(sol):
@@ -1005,17 +948,17 @@ else:
                     i_rel += 1
             return points               
         
-        def tracerActivite(self,constellation,annoter=False):
-            return self.solution.tracerActivite(constellation,annoter)
+        def plotActivity(self,constellation,annoter=False):
+            return self.solution.plotActivity(constellation,annoter)
             
-        def tracerHistorique(self,init=True):
-            return self.solution.tracerHistorique(init)
+        def plotHistory(self,init=True):
+            return self.solution.plotHistory(init)
         
         def saveSample(self,constellation):
             self.solution.saveSample(constellation)
             
-        def initSolution(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution):
-            self.solution = UnitParallelCCASearch(constellation,start_date,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution)
+        def initSolution(self,constellation,startDate,transitionModel,dt_construction_transition,tlim,CCAs,solution):
+            self.solution = UnitParallelCCASearch(constellation,startDate,transitionModel,dt_construction_transition,tlim,CCAs,solution)
             
         def getSolution(self):
             return self.solution.getSolution()
@@ -1023,18 +966,18 @@ else:
         def setSolution(self,sol,vid,modes_retenus,modes_candidats,modes_retires,objectif):
             self.solution.setSol(sol,vid,modes_retenus,modes_candidats,modes_retires,objectif)
         
-        def verifierSolution(self):
-            self.solution.verifierSolution()
+        def verifySolution(self):
+            self.solution.verifySolution()
             
         def getModesSolution(self):
             return self.solution.getModes()
     
-    class Slave(Processus):
+    class Slave(Process):
         # classe pour planifier les sequences des cca sur les slaves
-        class PlanificateurCCA:
-            def __init__(self,sol_cca,modeleDeTransition):
-                self.solution = sol_cca
-                self.modeleDeTransition = modeleDeTransition
+        class CCAScheduler:
+            def __init__(self,solCCA,transitionModel):
+                self.solution = solCCA
+                self.transitionModel = transitionModel
     
             def __str__(self):
                 return self.solution.__str__()
@@ -1042,8 +985,8 @@ else:
             def getSatellite(self):
                 return self.solution.getSatellite()
     
-            def getIdentifiant(self):
-                return self.solution.getIdentifiant()
+            def getIdentifier(self):
+                return self.solution.getIdentifier()
         
             def getSolution(self):
                 return self.solution
@@ -1051,91 +994,91 @@ else:
             def getSequence(self):
                 return self.solution.getSequence()
             
-            # pas vraiment une explication. Plutot la liste d'ajouts ?
+            # pas vraiment une explaination. Plutot la liste d'ajouts ?
             # /!\ en cas d'échec : garde les activités (pour ça qu'on récupère l'ancienne solution)
-            # c'est le master qui gère le retrait des activités ratées
-            def planifierMode(self,constellation,mode,activites):
+            # c'est le master qui gère le removal des activités ratées
+            def scheduleMode(self,constellation,mode,activites):
                 r,m = mode
-                explication = self.solution.ajouterActivites(constellation,activites,self.modeleDeTransition)
-                derniereSolution = deepcopy(self.solution)
-                succes = self.solution.calculerSequence(constellation,self.modeleDeTransition)
-                if not succes:
-                    self.solution = derniereSolution
-                return explication
+                explaination = self.solution.insertActivities(constellation,activites,self.transitionModel)
+                previousSolution = deepcopy(self.solution)
+                sucess = self.solution.computeNewSequence(constellation,self.transitionModel)
+                if not sucess:
+                    self.solution = previousSolution
+                return explaination
                     
-            def sequenceFaisable(self,constellation):
-                return self.solution.sequenceFaisable(constellation,self.modeleDeTransition)
+            def isSequenceFeasible(self,constellation):
+                return self.solution.isSequenceFeasible(constellation,self.transitionModel)
             
-        def __init__(self,constellation,modeleDeTransition):
+        def __init__(self,constellation,transitionModel):
             comm = MPI.COMM_WORLD
             rank = comm.Get_rank()
             super().__init__("slave "+str(rank))
-            activites = constellation.extraireActivitesRequetes()
-            self.grapheDependances = GroupeComposantesActivitesStatiques(constellation,activites,modeleDeTransition)
+            activites = constellation.extractActivitiesFromRequests()
+            self.dependenciesGraph = StaticCCAsGroup(constellation,activites,transitionModel)
             
-        def estMessageFin(self,data):
+        def isEndMessage(self,data):
             return 'fin' in data
         
-        def etendreDureesCalcul(self):
+        def extendComputationDuration(self):
             durees = []
             for i,date in enumerate(self.dates_cca):
                 if i<len(self.dates_cca)-1:
                     durees.append((date,self.dates_cca[i+1]-date))
             return durees
         
-        def packSolution(self,cca,mode,faisable,explication,iteration):
-            return {'iteration':iteration,'cpu_time':self.etendreDureesCalcul(),'reception':time(),'envoi':(self.date_envoi,self.duree_envoi),'mode':mode,'cca':deepcopy(cca),'faisable':faisable,'source':rank,'explication':explication}
+        def packSolution(self,cca,mode,faisable,explaination,iteration):
+            return {'iteration':iteration,'cpu_time':self.extendComputationDuration(),'reception':time(),'envoi':(self.sendingDate,self.sendingDuration),'mode':mode,'cca':deepcopy(cca),'faisable':faisable,'source':rank,'explaination':explaination}
     
-        def insererActivites(self,constellation,data,modeleDeTransition):
-            self.duree_envoi = time() - data['time']
-            self.start_calcul = time()
-            self.date_envoi = data['time']
+        def insertActivities(self,constellation,data,transitionModel):
+            self.sendingDuration = time() - data['time']
+            self.startComputation = time()
+            self.sendingDate = data['time']
             iteration = data['iteration']
             start = time()
             mode = data['mode'] # [(r,m)]
             activites = data['activites']
-            sol_cca = data['cca']
+            solCCA = data['cca']
             # ajouter la sequence comme sequence initiale
-            self.planif = self.PlanificateurCCA(sol_cca,modeleDeTransition)
+            self.planif = self.CCAScheduler(solCCA,transitionModel)
             # solution initiale = sequence (activites des modes deja planifies)
-            explication = self.planif.planifierMode(constellation,mode,activites)
-            solution_cca = self.planif.getSolution()
-            faisable = self.planif.sequenceFaisable(constellation)
-            self.dates_cca = [self.start_calcul,time()]
-            self.resultat = self.packSolution(solution_cca,mode,faisable,explication,iteration)
+            explaination = self.planif.scheduleMode(constellation,mode,activites)
+            solutionCCA = self.planif.getSolution()
+            feasible = self.planif.isSequenceFeasible(constellation)
+            self.dates_cca = [self.startComputation,time()]
+            self.result = self.packSolution(solutionCCA,mode,feasible,explaination,iteration)
                     
-        def resoudre(self,constellation,mailbox,modeleDeTransition):
+        def resolve(self,constellation,mailbox,transitionModel):
             comm = MPI.COMM_WORLD
             while True:
                 data = comm.recv()
-                if self.estMessageFin(data):
+                if self.isEndMessage(data):
                     break
                 else:
-                    self.insererActivites(constellation,data,modeleDeTransition)
-                    mailbox.posterMessage(self.resultat)
+                    self.insertActivities(constellation,data,transitionModel)
+                    mailbox.postMessage(self.result)
         
-        def getResultat(self):
+        def getResult(self):
             if MPI.COMM_WORLD.Get_size()==1:
-                self.resultat['reception'] = (self.resultat['reception'],time() - self.resultat['reception'])
-            return self.resultat
+                self.result['reception'] = (self.result['reception'],time() - self.result['reception'])
+            return self.result
         
         
     path = '../data'
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     
-    def envoyerMessage(mode,activites,cca,cpu,iteration):
+    def sendMessage(mode,activites,cca,cpu,iteration):
         comm = MPI.COMM_WORLD
         rank = comm.Get_rank()
         assert(rank==0)
         data = {'iteration':iteration,'mode':mode,'cca':cca,'source':rank,'activites':activites,'time':time()}
         comm.send(data, dest=cpu, tag=rank)
     
-    class MessagerieMessageUnique:
+    class UniqueMessageCommunication:
         def __init__(self):
             pass
         
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             MPI.COMM_WORLD.send(data,dest=0)
             
@@ -1146,14 +1089,14 @@ else:
             data['reception'] = (data['reception'],time()-data['reception'])
             return [data]
         
-        def demanderTache(self,mode,activites,cca,cpu,iteration):
+        def askForSchedulingTask(self,mode,activites,cca,cpu,iteration):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            envoyerMessage(mode,activites,cca,cpu,iteration)
+            sendMessage(mode,activites,cca,cpu,iteration)
             
         def __str__(self):
-            return "Messagerie à message unique"
+            return "Unique message communication"
         
-    class MessagerieSynchronisee:
+    class SynchronizedCommunication:
         def __init__(self):
             comm = MPI.COMM_WORLD 
             self.size = comm.Get_size()-1 
@@ -1164,39 +1107,39 @@ else:
                 nbytes = 0
             self.win = MPI.Win.Allocate_shared(nbytes, itemsize, comm=comm) 
             # create a numpy array whose data points to the shared mem
-            self.cpu_mapped, itemsize = self.win.Shared_query(0)
+            self.cpuMapped, itemsize = self.win.Shared_query(0)
             for i in range(self.size):
-                self.cpu_mapped[i] = 0
+                self.cpuMapped[i] = 0
         
         # appelé par le master
-        def demanderTache(self,mode,activites,cca,cpu,iteration):
+        def askForSchedulingTask(self,mode,activites,cca,cpu,iteration):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            self.cpu_mapped[cpu-1] = 1
-            envoyerMessage(mode,activites,cca,cpu,iteration)
+            self.cpuMapped[cpu-1] = 1
+            sendMessage(mode,activites,cca,cpu,iteration)
             
         # appelé par les slaves
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             MPI.COMM_WORLD.send(data,dest=0)
             rank = MPI.COMM_WORLD.Get_rank()
-            #self.cpu_mapped[rank-1] = 1
+            #self.cpuMapped[rank-1] = 1
             
         def readMessages(self):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            nCPUMapped = sum([self.cpu_mapped[i] for i in range(self.size)])
+            nCPUMapped = sum([self.cpuMapped[i] for i in range(self.size)])
             for i in range(nCPUMapped):
                 data = MPI.COMM_WORLD.recv()
                 data['reception'] = (data['reception'],time()-data['reception'])
                 source = data["source"]
-                self.cpu_mapped[source-1] = 0
+                self.cpuMapped[source-1] = 0
                 yield data
             else:
                 return None
         
         def __str__(self):
-            return "Messagerie synchronisée"
+            return "Synchronized message"
         
-    class MessageriePartagee:
+    class SharedCommunication:
         def __init__(self):
             comm = MPI.COMM_WORLD 
             self.size = comm.Get_size()-1 
@@ -1207,62 +1150,61 @@ else:
                 nbytes = 0
             self.win = MPI.Win.Allocate_shared(nbytes, itemsize, comm=comm) 
             # create a numpy array whose data points to the shared mem
-            self.flag_messages, itemsize = self.win.Shared_query(0)
+            self.flagMessages, itemsize = self.win.Shared_query(0)
             for i in range(self.size):
-                self.flag_messages[i] = False
-            #self.flag_messages = np.ndarray(buffer=self.buf, dtype=bool, shape=(size,))
+                self.flagMessages[i] = False
         
-        def demanderTache(self,mode,activites,cca,cpu,iteration):
+        def askForSchedulingTask(self,mode,activites,cca,cpu,iteration):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            envoyerMessage(mode,activites,cca,cpu,iteration)
+            sendMessage(mode,activites,cca,cpu,iteration)
     
-        def posterMessage(self,data):
+        def postMessage(self,data):
             assert(MPI.COMM_WORLD.Get_rank()>0)
             slot = MPI.COMM_WORLD.Get_rank()-1
-            self.flag_messages[slot] = True
+            self.flagMessages[slot] = True
             MPI.COMM_WORLD.send(data,dest=0)
         
         def readMessages(self):
             assert(MPI.COMM_WORLD.Get_rank()==0)
-            for i,x in enumerate(self.flag_messages):
+            for i,x in enumerate(self.flagMessages):
                 if x:
                     process = i+1
                     data = MPI.COMM_WORLD.recv(source=process)
                     data['reception'] = (data['reception'],time()-data['reception'])
                     assert(process==data['source'])
-                    self.flag_messages[i] = False
+                    self.flagMessages[i] = False
                     yield data
                 else:
                     yield None
         
         def __str__(self):
-            return "Messagerie partagée : "+ str([self.flag_messages[i] for i in range(self.size)])
+            return "Shared communication: "+ str([self.flagMessages[i] for i in range(self.size)])
     
     # Création de l'objet GLOBAL mailbox
-    def creerMailbox():
+    def createMailbox():
         comm = MPI.COMM_WORLD 
         if config.glob.sync:
-            mailbox = MessagerieSynchronisee()
+            mailbox = SynchronizedCommunication()
         else:
-            mailbox = MessageriePartagee()
-            #mailbox = MessagerieMessageUnique()
+            mailbox = SharedCommunication()
+            #mailbox = UniqueMessageCommunication()
         return mailbox   
 
     
     class runnableUPCCAS:
-        def execute(self,constellation,start_date,modeleDeTransition,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
-            mailbox = MessageriePartagee()
+        def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.inf,CCAs=None,solution=None):
+            mailbox = SharedCommunication()
             if rank == 0:
                 self.process = Master()
-                self.process.resoudre(constellation,start_date,mailbox,modeleDeTransition,dt_construction_transition,tlim,CCAs,solution)
+                self.process.resolve(constellation,startDate,mailbox,transitionModel,dt_construction_transition,tlim,CCAs,solution)
                 
                 for i in range(1,MPI.COMM_WORLD.Get_size()):
                     MPI.COMM_WORLD.send({"sol":self.process.solution.getSolutionContainer()},dest=i)
                 comm.Barrier()
                 return self.process.solution.getSolutionContainer()
             else:
-                self.process = Slave(constellation,modeleDeTransition)
-                self.process.resoudre(constellation,mailbox,modeleDeTransition)
+                self.process = Slave(constellation,transitionModel)
+                self.process.resolve(constellation,mailbox,transitionModel)
                 
                 data = None
                 data = MPI.COMM_WORLD.recv(data)

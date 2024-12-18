@@ -931,7 +931,7 @@ class StereoRequest(Request):
     def getNextMode(self,explaination,constellation):
         assert(explaination!=[])
         if self.candidateMode is not None:
-            self.i(explaination)
+            self.shiftActivities(explaination)
             self.buildMode(constellation)
         return self.candidateMode
 

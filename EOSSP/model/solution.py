@@ -727,7 +727,7 @@ class Solver:
             right_msg = " " + (right-1)*"-"
             printColor( left_msg + title_msg +  right_msg ,c=color)
             for text in add:
-                printColor("| "+str(text)+" : " + str(add[text]),c=color)
+                printColor("| "+str(text)+": " + str(add[text]),c=color)
             if filtre is None or 'time' in filtre:
                 printColor("| time elapsed: ",(temps-startDate)//60,"minutes",(temps-startDate)%60,c=color)
             if filtre is None or 'obj' in filtre:

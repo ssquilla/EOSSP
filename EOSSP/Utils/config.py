@@ -113,7 +113,7 @@ class EnumDomain(Domain):
         try:
             _value = str(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -131,7 +131,7 @@ class BooleanDomain(Domain):
                 return True # presence du flag sans valeur => True
             _value = bool(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -166,7 +166,7 @@ class IntDomain(Domain):
         try:
             _value = int(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -201,7 +201,7 @@ class FloatDomain(Domain):
         try:
             _value = float(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -221,7 +221,7 @@ class StrDomain(Domain):
         try:
             _value = str(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -238,7 +238,7 @@ class PathDomain(Domain):
         try:
             _value = str(value)
             if not self.__contains__(_value):
-                raise ValueError("Domain error "+str(value)+". Domain : "+self)
+                raise ValueError("Domain error "+str(value)+". Domain: "+self)
             return _value
         except Exception as e:
             print(e)
@@ -335,7 +335,7 @@ class Config:
             testAlgo = self.getOptValue("solver") in restrict_option[o]
             testSolverTimeDep =  self.getOptValue("solver")=="timeDependentSolver" and "LNS" in [self.getOptValue("initSolver"),self.getOptValue("fillSolver")]
             if not testAlgo and not testSolverTimeDep:
-                raise ValueError("Option inconnue (pour cet algorithme) : "+str(o))
+                raise ValueError("Unknwown option for the selected algorithm: "+str(o))
     
     def getInstance(self):
         return self.instance
@@ -360,68 +360,68 @@ class Config:
     def initOptions(self):
         self.options = {}
         # name,algos,defaut_value=None,domain=None
-        self.declareOption(None,"step",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activer le mode pas à pas (quand l'algo comprend des 'steps').")
-        self.declareOption(None,"cpu",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activer pour créer le graphique de charge de coeurs.")
-        self.declareOption(None,"charge",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Graphe de charge des composantes.")
-        self.declareOption(None,"obj",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activer pour créer la courbe d'évolution de l'objectif.")
-        self.declareOption(None,"sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],None,PathDomain(deactivable=True),description="Indiquer un chemin pour sauvegarder les résultats.")
-        self.declareOption("v","verbose",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],0,IntDomain(left_bound=0),description="Indiquer le niveau d'affichage.")
-        self.declareOption("o","verif",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).")
-        self.declareOption(None,"full_sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activer pour alléger la quantité d'information sauvegardée.")
-        self.declareOption("t","time",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],5,FloatDomain(left_bound=0),description="Indiquer le temps d'execution (en secondes).")
+        self.declareOption(None,"step",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activate step by step mode (when compatible)")
+        self.declareOption(None,"sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],None,PathDomain(deactivable=True),description="Indicates a path to save the results.")
+        self.declareOption("v","verbose",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],0,IntDomain(left_bound=0),description="Indicates the display depth.")
+        self.declareOption("o","verif",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activate to proceed the implemented checks during execution (slower, safer).")
+        self.declareOption(None,"full_sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activate to add supplementary information in samples.")
+        self.declareOption("t","time",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],5,FloatDomain(left_bound=0),description="Set the time limit (in seconds).")
+        #self.declareOption(None,"obj",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activer to export the objective curve.")
+        #self.declareOption(None,"cpu",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activer pour créer le graphique de charge de coeurs.")
+        #self.declareOption(None,"charge",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Graphe de charge des composantes.")
         # solvers CP
-        self.declareOption("m","modes",["CPSolver"],5,IntDomain(left_bound=1),description="Indiquer le nombre de modes considérés par requêtes.")
-        self.declareOption("w","threads",["CPSolver","cpSolver"],1,IntDomain(left_bound=1),description="Indiquer le nombre de threads travailleurs.")
-        self.declareOption(None,"cplex",["CPSolver","LNS"],self.glob.docplexPath,PathDomain(),description="Indiquer le chemin de cplex.")
+        self.declareOption("m","modes",["CPSolver"],5,IntDomain(left_bound=1),description="Indicates the number of modes considered by request.")
+        self.declareOption("w","threads",["CPSolver","cpSolver"],1,IntDomain(left_bound=1),description="Indicates the number of workers")
+        self.declareOption(None,"cplex",["CPSolver","LNS"],self.glob.docplexPath,PathDomain(),description="Indicates the Cplex path.")
         # BPCCAS
-        self.declareOption(None,"conserve",["BPCCAS"],False,description="Mode conservation du BPCCAS (lent) : conserve les modes validées même s'ils perdent en rang (score).")
-        self.declareOption(None,"stable_exp",["BPCCAS"],False,description="Mode stable explication (lent) : rejette un mode avec explication seulement si aucune autre requête mieux classé et non explorée existe.")
-        self.declareOption(None,"fails",["BPCCAS"],5,IntDomain(left_bound=1),description="Nombre d'éches consecutifs maximum pour l'appel au solver sur un coeur.")
-        self.declareOption(None,"scalls",["BPCCAS"],50,IntDomain(left_bound=1),description="Nombre d'appels au solver maximum sur un coeur.")
-        self.declareOption(None,"solver_PCCAS",["BPCCAS","UPCCAS"],"OPTW",StrDomain(["LKH","OPTW","OPTWGroups"]),description="Solver pour BPCCAS et UPCCAS.")
+        self.declareOption(None,"conserve",["BPCCAS"],False,description="Conservation mode for BPCCAS (slower): conserve all validated modes even if they violated the greedy order.")
+        self.declareOption(None,"stable_exp",["BPCCAS"],False,description="Stable explication mode (slower): reject modes with explaination only if another unexplored and better ranked requests exists.")
+        self.declareOption(None,"fails",["BPCCAS"],5,IntDomain(left_bound=1),description="Maximum number of insertion failures within a solver execution (for each process).")
+        self.declareOption(None,"scalls",["BPCCAS"],50,IntDomain(left_bound=1),description="Maximum number of call to the solver (for each process).")
+        self.declareOption(None,"solver_PCCAS",["BPCCAS","UPCCAS"],"OPTW",StrDomain(["LKH","OPTW","OPTWGroups"]),description="External TSPTW choice for BPCCAS and UPCCAS.")
         #LNS
-        self.declareOption("k","n_cca",["LNS"],2,IntDomain(left_bound=1),description="Nombre de CCA considérées dans le voisinage (version LNS avec CP).")
-        self.declareOption("u","use_solver",["LNS"],False,description="Activer pour activer le solver à chaque insertion temporaire (mode glouton).")
-        self.declareOption(None,"quota_requests",["LNS"],np.Inf,IntDomain(left_bound=1,right_bound=np.Inf),description="Nombre de requêtes à détruire au maximum (LNS hybride).")
-        self.declareOption(None,"nbh", ["LNS"], "load",StrDomain(["random","load"]),description="Mode de séléction des CCAs durant la recherche locale.")
-        self.declareOption(None,"version",["LNS"],"greedy-request",StrDomain(["greedy-request","greedy-cca","hybrid","coop"]),description="Choix de la version du LNS.")
-        self.declareOption(None,"time_insert",["LNS"],np.Inf,FloatDomain(left_bound=0,deactivable=True),description="Temps de temps maximum passé à l'insertion d'un mode (s). (Mode glouton)")
-        self.declareOption(None,"tries_insert",["LNS"],np.Inf,IntDomain(left_bound=0,deactivable=True),description="Nombre d'insertions maximum considérés à l'étape d'insertion. (Mode glouton)")
-        self.declareOption("i","stableIt",["LNS"],15,IntDomain(left_bound=1),description="Nombre d'itération stable avant perturbation durant la recherche locale.")
-        self.declareOption(None,"max_operateur",["LNS"],np.Inf,IntDomain(left_bound=1),description="Nombre maximum d'appels de l'opérateur.")
-        self.declareOption(None,"max_iteration",["LNS"],np.Inf,IntDomain(left_bound=1),description="Nombre d'itérations maximum.")
-        self.declareOption(None,"CPLim",["LNS"],3.0,FloatDomain(left_bound=0),description="Temps alloué au solver CP (version LNS avec CP).")
-        self.declareOption(None,"max_echecs",["LNS"],np.Inf,IntDomain(left_bound=0),description="Nombre d'echecs maximum du glouton.")
+        self.declareOption("k","n_cca",["LNS"],2,IntDomain(left_bound=1),description="Number of CCAs considered to build a neighborhood (LNS solver hybridized with CP).")
+        self.declareOption("u","use_solver",["LNS"],False,description="Activate to exploit the external TSPTW solver during activities insertions.")
+        self.declareOption(None,"quota_requests",["LNS"],np.Inf,IntDomain(left_bound=1,right_bound=np.Inf),description="Maximum number of requests to destroy (LNS solver hybridized with CP).")
+        self.declareOption(None,"nbh", ["LNS"], "load",StrDomain(["random","load"]),description="Heuristic to select CCAs during local search (random|load: load profile measure of the CCA).")
+        self.declareOption(None,"version",["LNS"],"greedy-request",StrDomain(["greedy-request","greedy-cca","hybrid","coop"]),description="Select the LNS version.")
+        self.declareOption(None,"time_insert",["LNS"],np.Inf,FloatDomain(left_bound=0,deactivable=True),description="Maximum time spent to insert a given mode (s). (Greedy mode)")
+        self.declareOption(None,"tries_insert",["LNS"],np.Inf,IntDomain(left_bound=0,deactivable=True),description="Maximum number of insertions considered at each iteration. (Greedy mode)")
+        self.declareOption("i","stableIt",["LNS"],15,IntDomain(left_bound=1),description="Maximum number of stable iterations before performing a perturbation during local search.")
+        self.declareOption(None,"max_operateur",["LNS"],np.Inf,IntDomain(left_bound=1),description="Maximum number of calls to the operators (Meant for debug).")
+        self.declareOption(None,"max_iteration",["LNS"],np.Inf,IntDomain(left_bound=1),description="Maximum number of iterations (Meant for debug).")
+        self.declareOption(None,"CPLim",["LNS"],3.0,FloatDomain(left_bound=0),description="Time limit allocated to the CP solver (LNS hybridized with CP).")
+        self.declareOption(None,"max_echecs",["LNS"],np.Inf,IntDomain(left_bound=0),description="Maximum number failed insertions during each greedy procedure.")
         # Time dependent solver
-        self.declareOption(None,"initSolver",["timeDependentSolver"],"LNS",StrDomain(["LNS","CPSolver","BPCCAS"]),description="Solver d'initialisation.")
-        self.declareOption(None,"initDur",["timeDependentSolver"],np.Inf,FloatDomain(left_bound=0),description="Temps d'initialisation.")
-        self.declareOption(None,"fillSolver",["timeDependentSolver"],"LNS",StrDomain(["LNS","CPSolver","BPCCAS"]),description="Solver d'initialisation.")
-        self.declareOption(None,"initTransitionModel",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],"mean",StrDomain(["slow","fast","mean","time-dep"]),description="Modèle de transition : (slow|fast|mean).")
-        self.declareOption(None,"chain",["timeDependentSolver"],False,BooleanDomain(),description="Flag pour activer l'enchaînement des modèles approchés et exactes.")
+        self.declareOption(None,"initSolver",["timeDependentSolver"],"LNS",StrDomain(["LNS","CPSolver","BPCCAS"]),description="Initial solver.")
+        self.declareOption(None,"initDur",["timeDependentSolver"],np.Inf,FloatDomain(left_bound=0),description="Initial duration.")
+        self.declareOption(None,"fillSolver",["timeDependentSolver"],"LNS",StrDomain(["LNS","CPSolver","BPCCAS"]),description="Insertion solver.")
+        self.declareOption(None,"initTransitionModel",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],"mean",StrDomain(["slow","fast","mean","time-dep"]),description="Transition model: (slow|fast|mean).")
+        self.declareOption(None,"chain",["timeDependentSolver"],False,BooleanDomain(),description="Activate to chain approximated and exact model (Hybrid smodel strategy).")
         
         # UPCCAS
-        self.declareOption(None,"preval",["UPCCAS"],False,description="Mode prévalidation : transfère les activités déjà validées d'un nouveau mode (celles du mode précédent). Courcircuite potentiellement le rang de scores.")
-        self.declareOption("a","anticipation",["UPCCAS"],False,description="Anticipe la planification d'un mode moins bien classé si ceux mieux classés sont déjà planifiés sur la CCA en question.")
+        self.declareOption(None,"preval",["UPCCAS"],False,description="Prevalidation mode: transfer activities that are already planned of a failed mode to the new generated mode. Potentially violates the greedy order.")
+        self.declareOption("a","anticipation",["UPCCAS"],False,description="Lock the planning of mode that are not top-ranked w.r.t the greedy mode (considering the non-generated modes also). Prevent greedy order violation.")
         # Autres
-        self.declareOption(None,"data",["dataVisu","timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"],"time-independent",StrDomain(["time-independent","time-dependent"]),description="Choix du dossier des données d'entrées.")
-        self.declareOption(None,"solver",["timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"],"LNS",StrDomain(["timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"]),description="Solver à utiliser.") # option de bruitage
-        self.declareOption(None,"derniere_requete",["UPCCAS","BPCCAS","LNS"],4.5,FloatDomain(left_bound=0),description="Date de la dernière requête en minutes.") # option de bruitage
-        self.declareOption(None,"proportion_depart",["UPCCAS","BPCCAS","LNS"],0.6,FloatDomain(left_bound=0,right_bound=1),description="Proportion de requêtes au départ (cas dynamique).") # option de bruitage
-        self.declareOption(None,"dt_requetes",["UPCCAS","BPCCAS","LNS"],0.5,FloatDomain(left_bound=0),description="Durée entre l'arrivée des batchs de requêtes.") # option de bruitage       
-        self.declareOption(None,"noise",["UPCCAS","BPCCAS"],0,FloatDomain(left_bound=0),description="Amplitude du bruit (itération stochastique).") # option de bruitage
-        self.declareOption("d","destroy",["LNS"],0.2,FloatDomain(left_bound=0,right_bound=1),description="Amplitude de destruction (itération stochastique).") # ratio de destruction
-        self.declareOption(None,"perturb_rate",["LNS"],0.2,FloatDomain(left_bound=0,right_bound=1),description="Amplitude de destruction (perturbation).") # ratio de destruction
-        self.declareOption("d","destroy_BPCCAS",["BPCCAS"],0,FloatDomain(left_bound=0,right_bound=1),description="Amplitude de destruction (itération stochastique).") # ratio de destruction
-        self.declareOption("h","help",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],False,description="Afficher l'aide.")# help
-        self.declareOption("c","comm",["BPCCAS","UPCCAS","LNS","CPSolver"],"",StrDomain(None,deactivable=True),"Ajouter un commentaire à l'échantillon de résultats.")# help
-        self.declareOption("f","folder",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],None,IntDomain(left_bound=0,deactivable=True),"Indiquer le dossier de l'instance.")# help
-        self.declareOption("n","file",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],None,IntDomain(left_bound=0,deactivable=True),"Indiquer le fichier de l'instance.")# help
-        self.declareOption("s","seed",["BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],0,IntDomain(),description="Graine aléatoire.")
-        self.declareOption(None,"include_systematic",["BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],False,BooleanDomain(),description="Inclure les requêtes systématiques.")
-        self.declareOption(None,"restart",["LNS","BPCCAS","UPCCAS"],1,IntDomain(left_bound=0),description="Nombre de restarts du solver OPTW (algos avec solver OPTW).")
-        self.declareOption(None,"dynamic",["LNS","BPCCAS","UPCCAS","CPSolver"],False,BooleanDomain(),description="Activer l'arrivée dynamique des requêtes.")
-        self.declareOption(None,"test_req",["LNS","BPCCAS","UPCCAS","CPSolver"],np.Inf,IntDomain(left_bound=1),description="Limiter le nombre de requêtes (pour le debug).")
-        self.declareOption(None,"profile",["LNS","BPCCAS","UPCCAS","CPSolver"],False,BooleanDomain(),description="Activer le profiling du modèle de transition.")
+        self.declareOption(None,"data",["dataVisu","timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"],"time-independent",StrDomain(["time-independent","time-dependent"]),description="Set the input data folder.")
+        self.declareOption(None,"solver",["timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"],"LNS",StrDomain(["timeDependentSolver","UPCCAS","BPCCAS","LNS","CPSolver"]),description="Solver to use.") # option de bruitage
+        self.declareOption(None,"derniere_requete",["UPCCAS","BPCCAS","LNS"],4.5,FloatDomain(left_bound=0),description="Delay before the first requests arrival (in minutes).") # option de bruitage
+        self.declareOption(None,"proportion_depart",["UPCCAS","BPCCAS","LNS"],0.6,FloatDomain(left_bound=0,right_bound=1),description="Initial proportion of available requests (dynamic case).") # option de bruitage
+        self.declareOption(None,"dt_requetes",["UPCCAS","BPCCAS","LNS"],0.5,FloatDomain(left_bound=0),description="Duration between the arrival of each batch of requests.") # option de bruitage       
+        self.declareOption(None,"noise",["UPCCAS","BPCCAS"],0,FloatDomain(left_bound=0),description="Noise amplitude (stochastic iterations).") # option de bruitage
+        self.declareOption("d","destroy",["LNS"],0.2,FloatDomain(left_bound=0,right_bound=1),description="Destruction amplitude (stochastic iterations).") # ratio de destruction
+        self.declareOption(None,"perturb_rate",["LNS"],0.2,FloatDomain(left_bound=0,right_bound=1),description="Destruction amplitude (perturbation).") # ratio de destruction
+        self.declareOption("d","destroy_BPCCAS",["BPCCAS"],0,FloatDomain(left_bound=0,right_bound=1),description="Destruction amplitude (stochastic iteration).") # ratio de destruction
+        self.declareOption("h","help",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],False,description="Display help menu.")# help
+        self.declareOption("c","comm",["BPCCAS","UPCCAS","LNS","CPSolver"],"",StrDomain(None,deactivable=True),"Add a comment to the results sample.")# help
+        self.declareOption("f","folder",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],None,IntDomain(left_bound=0,deactivable=True),"Indicates the data folder number.")# help
+        self.declareOption("n","file",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],None,IntDomain(left_bound=0,deactivable=True),"Indicates the data instance number.")# help
+        self.declareOption("s","seed",["BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],0,IntDomain(),description="Random seed.")
+        self.declareOption(None,"include_systematic",["BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],False,BooleanDomain(),description="Activate to include systematic requests.")
+        self.declareOption(None,"restart",["LNS","BPCCAS","UPCCAS"],1,IntDomain(left_bound=0),description="Number of restart of the external TSPTW solvers (when compatible).")
+        self.declareOption(None,"dynamic",["LNS","BPCCAS","UPCCAS","CPSolver"],False,BooleanDomain(),description="Activate to set the dynamic arrival of the requests.")
+        self.declareOption(None,"test_req",["LNS","BPCCAS","UPCCAS","CPSolver"],np.Inf,IntDomain(left_bound=1),description="Limit the number of requests considered (meant for debug).")
+        self.declareOption(None,"profile",["LNS","BPCCAS","UPCCAS","CPSolver"],False,BooleanDomain(),description="Activate the profiliing of the transition model (meant for debug).")
         
         # limiter les options aux algos indiqués
         self.applyOptionsParsingRules()
@@ -437,7 +437,7 @@ class Config:
             if self.getOptValue("solver") in self.options[opt].getAlgos():
                 if self.options[opt].getShortName() is not None:
                     print("-"+self.options[opt].getShortName(),end=" || ")
-                print("--"+ self.options[opt].getName()+" : "+self.options[opt].getDescription())
+                print("--"+ self.options[opt].getName()+": "+self.options[opt].getDescription())
         
     def monterFlagOption(self):
         short_listing = ""
@@ -501,7 +501,7 @@ class Config:
         #print(opts,args)
         op = [x[0] for x in opts]
         if '--destroy' in op and '--noise' in op:
-            raise Exception('--destroy et --noise ne peuvent être utilisés simultanémment')
+            raise Exception('--destroy et --noise options can\'t be used simultaneously')
         for o, a in opts:
             self.restrict(o,self.restrict_options)
             opt = self.findOpt(o)
@@ -509,24 +509,24 @@ class Config:
         #self.options["time"].setValue(self.options["time"].getValue()*60)               
         # traiter les incohérences d'options avec le solver utilisé
         if not(self.getOptValue("solver") in self.algos):
-            raise NameError("Algorithme inconnu",self.donnees.algo_name)
+            raise NameError("Unknown algorithm",self.donnees.algo_name)
         
         instance = {"folder":self.getOptValue('folder'),"file":self.getOptValue('file')}
         if instance["folder"] is None:
             instance = None
         self.donnees.instance = instance
         if instance is not None and 'file' in instance and 'folder' not in instance:
-            raise ValueError("Spécifiez le dossier de l'instance")
+            raise ValueError("Specify the data folder")
         
         if self.getOptValue("solver")=="timeDependentSolver":
             if not self.getOptValue("data")=="time-dependent":
-                raise ValueError("Utilisez les instances time-dependent avec le solver timeDependentSolver. --data=time-dependent")
+                raise ValueError("Use time-dependent instances with the solver 'timeDependentSolver'. --data=time-dependent")
         
         if self.getOptValue("chain"):
             if not self.getOptValue("initTransitionModel") in ["slow","mean","fast"]:
-                raise ValueError("Définissez un modèle approché avec --initTransitionModel=<model>. Valeurs possibles : "+str(["slow","mean","fast"]))
+                raise ValueError("Define a new approximated model using --initTransitionModel=<model>. Possible values : "+str(["slow","mean","fast"]))
             if self.getOptValue("initDur")>=self.getOptValue("time"):
-                raise ValueError("Temps alloué au solver approché dépassant la durée totale. Indiquez --initDur=<duree>.")
+                raise ValueError("Time allocated to approximated solve exceeding the overall time limit. Specify --initDur=<duree>.")
         return instance
     
     def __str__(self):
@@ -578,8 +578,8 @@ class Config:
         elif self.getOptValue("initTransitionModel")=="slow":
             transitionModel = SlowModel
         else:
-            transitionModel = "modèle time-dependent"
-        mess += " | modèle initial : " + str(transitionModel) +"\n"
+            transitionModel = "time-dependent model"
+        mess += " | initial model : " + str(transitionModel) +"\n"
         mess += " ------------ OPTIONS -----------------------\n"
         for opt in self.options:
             mess += " | " + str(opt) + " : " + str(self.getOptValue(opt)) + "\n"
