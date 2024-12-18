@@ -11,7 +11,7 @@ import numpy as np
 import sys
 from mpi4py import MPI
 import unittest
-import line_profiler
+#import line_profiler
 
 
 def closestRounding(x,digits):
@@ -160,7 +160,7 @@ class MaxPrecomputedModel(ExtractedTimeIndependentModel):
         return round(self.tabular[index],digits)
 
 
-profiler = line_profiler.LineProfiler()
+#profiler = line_profiler.LineProfiler()
      
 class TimeDependentTransitionModel:
     
@@ -168,7 +168,8 @@ class TimeDependentTransitionModel:
         
         self.createTransitionModelFromFiles(foldername,constellation,composantes,precompute_approx=None)
         if profile:
-            profiler.print_stats()
+            pass
+            #profiler.print_stats()
             
     def createTransitionModelFromFiles(self,foldername,constellation,composantes,precompute_approx=None):
         assert(precompute_approx is None or precompute_approx in ["slow","mean","fast"])

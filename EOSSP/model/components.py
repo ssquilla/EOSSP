@@ -1,13 +1,13 @@
 import collections
 import bisect
 from mpi4py import MPI
-from .graph import *
+from EOSSP.model.graph import *
 
-from ..Utils import *
-from ..Utils.config import *
+from EOSSP.Utils import *
+from EOSSP.Utils.config import *
 config = Config()
 
-from .transitionModel import MeanModel
+from EOSSP.model.transitionModel import MeanModel
 
 class ActivityDateEvent: # event = (0:debut|1:fin)
     def __init__(self,sat,date,activity,event):

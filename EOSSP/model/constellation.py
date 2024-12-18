@@ -13,12 +13,14 @@ from functools import reduce
 import itertools
 from operator import itemgetter
 
+"""
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as patches
 import matplotlib
+"""
 
 from copy import copy
 from copy import deepcopy
@@ -1998,6 +2000,7 @@ class Constellation:
                         GRAPHIQUES
         =========================================================  
     """
+    """
     def plotModesLosses(self):
         return self.solution.plotModesLosses()
     
@@ -2101,3 +2104,4 @@ class Constellation:
     def plotLoad(self,annoter=False):
         f = self.solution.tracerActivite(annoter)
         return f
+    """

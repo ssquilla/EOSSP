@@ -6,12 +6,13 @@ from mpi4py import MPI
 import pickle
 from copy import deepcopy
 import operator
-import matplotlib.pyplot as plt
-from matplotlib import patches
 
-from .constellation import TYPE_LONG_MONO,TYPE_MONO,TYPE_PERIODIC,TYPE_STEREO,TYPE_SYSTEMATIC,TYPE_DOWNLOAD
+#import matplotlib.pyplot as plt
+#from matplotlib import patches
 
-from ..Utils.config import *
+from EOSSP.model.constellation import TYPE_LONG_MONO,TYPE_MONO,TYPE_PERIODIC,TYPE_STEREO,TYPE_SYSTEMATIC,TYPE_DOWNLOAD
+
+from EOSSP.Utils.config import *
 global config
 config = Config()
 
@@ -416,7 +417,44 @@ class History:
             
     def getBest(self):
         return self.bestObjective,self.bestSolution,self.bestSelectedModes
+    
+    def bestUpdate(self,objective,solution,modes_retenus):
+        if(objective>=self.bestObjective):
+            self.bestSelectedModes = modes_retenus.copy()
+            if solution is not None:
+                self.bestSolution = deepcopy(solution)
+            self.bestObjective = objective
+            #assert(solution is not None)
+
+    def componentsBounds(self,component):
+        return component.getStartDate(),component.getEndDate()
+    
+    def rejectBestSolution(self):
+        self.bestObjective = (0,0)
+        self.bestSelectedModes = []
+    
+    # Event : 0 = rien, 1 = fin itération
+    def updateHistory(self,time,event,objective,solution,modes_retenus,components,constellation):
+        if self.ccas is None:
+            self.ccas = {scca : self.componentsBounds(components.getConnectedComponent(scca)) for scca in components.getComponents()}
         
+        time = min(time,config.getOptValue("time"))
+        self.setValidatedRequests(constellation,modes_retenus)
+        ccas = components.getNumberOfComponents()
+        self.meanObservationScore = constellation.meanObservationScore(modes_retenus)
+        self.stats['#CCA'] = ccas
+        self.stats["#A"] = components.getNumberOfElements()
+        seq = {s : {cca : solution[s][cca].getSequence() for cca in solution[s]} for s in solution}
+        if not config.getOptValue("full_sample"):
+            self.historic.append((time,event,objective,len(modes_retenus),ccas,MPI.COMM_WORLD.Get_rank(),None,None))
+        else:
+            self.historic.append((time,event,objective,len(modes_retenus),ccas,MPI.COMM_WORLD.Get_rank(),modes_retenus,seq))
+        self.bestUpdate(objective,solution,modes_retenus)
+        self.stats['ratio'] = self.computeMessageRatio()
+    
+    def deleteLastPoint(self):
+        self.historic.pop(-1)    
+    """
     def plotCPU(self):
         f,ax = plt.subplots(figsize=(15,6))
         plt.xlabel('time (s)')
@@ -490,41 +528,5 @@ class History:
         instance = self.formatInstance()
         algo = str(config.getOptValue("solver"))
         plt.savefig("../results/charge_cca/charge_"+instance + "_" +algo + "_" +str(MPI.COMM_WORLD.Get_size())+"_proc.png")
-        return f    
-
-    def bestUpdate(self,objective,solution,modes_retenus):
-        if(objective>=self.bestObjective):
-            self.bestSelectedModes = modes_retenus.copy()
-            if solution is not None:
-                self.bestSolution = deepcopy(solution)
-            self.bestObjective = objective
-            #assert(solution is not None)
-
-    def componentsBounds(self,component):
-        return component.getStartDate(),component.getEndDate()
-    
-    def rejectBestSolution(self):
-        self.bestObjective = (0,0)
-        self.bestSelectedModes = []
-    
-    # Event : 0 = rien, 1 = fin itération
-    def updateHistory(self,time,event,objective,solution,modes_retenus,components,constellation):
-        if self.ccas is None:
-            self.ccas = {scca : self.componentsBounds(components.getConnectedComponent(scca)) for scca in components.getComponents()}
-        
-        time = min(time,config.getOptValue("time"))
-        self.setValidatedRequests(constellation,modes_retenus)
-        ccas = components.getNumberOfComponents()
-        self.meanObservationScore = constellation.meanObservationScore(modes_retenus)
-        self.stats['#CCA'] = ccas
-        self.stats["#A"] = components.getNumberOfElements()
-        seq = {s : {cca : solution[s][cca].getSequence() for cca in solution[s]} for s in solution}
-        if not config.getOptValue("full_sample"):
-            self.historic.append((time,event,objective,len(modes_retenus),ccas,MPI.COMM_WORLD.Get_rank(),None,None))
-        else:
-            self.historic.append((time,event,objective,len(modes_retenus),ccas,MPI.COMM_WORLD.Get_rank(),modes_retenus,seq))
-        self.bestUpdate(objective,solution,modes_retenus)
-        self.stats['ratio'] = self.computeMessageRatio()
-    
-    def deleteLastPoint(self):
-        self.historic.pop(-1)
+        return f           
+    """

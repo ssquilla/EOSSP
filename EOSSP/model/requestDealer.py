@@ -15,7 +15,7 @@ from copy import deepcopy
 from ..Utils.config import *
 global config
 config = Config()
-from ..Utils.Utils import printMaster,printColor,printOpen,printClose,printNoSpace
+from EOSSP.Utils.Utils import printMaster,printColor,printOpen,printClose,printNoSpace
 
 
 class RequestDealer:

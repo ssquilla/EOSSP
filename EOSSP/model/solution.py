@@ -10,10 +10,12 @@ from time import time
 from mpi4py import *
 from mpi4py import MPI
 import pickle
-import matplotlib
+
 from copy import deepcopy,copy
-from matplotlib import patches
-import matplotlib.pyplot as plt
+
+#import matplotlib
+#from matplotlib import patches
+#import matplotlib.pyplot as plt
 import os
 
 class Solver:
@@ -842,7 +844,7 @@ class Solver:
                         GRAPHIQUES
         =============================================== 
     """
-
+    """
     def plotActivity(self,constellation,annotate=False):
         f,ax = plt.subplots(figsize=(15,6))
         colorObs = 'c'
@@ -916,7 +918,7 @@ class Solver:
         n2,bins2,p2 = ax2.hist(perte)
         return f
     
-    
+    """
     """
         =============================================== 
                         VERIF/DEBUG

@@ -1,5 +1,5 @@
 import numpy as np
-from ..Utils.Utils import *
+from EOSSP.Utils.Utils import *
 
 """
 Graph: util tools to create and manipulated graphs for modes and activities.
