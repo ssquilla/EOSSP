@@ -11,7 +11,8 @@ class Config:
         pass
 class ConfigGlobal(Config):
     def __init__(self):
-        self.docplexPath = '/usr/local/CPLEX_Studio1210/cpoptimizer/bin/x86-64_linux/cpoptimizer'
+        #self.docplexPath = '/usr/local/CPLEX_Studio1210/cpoptimizer/bin/x86-64_linux/cpoptimizer'
+        self.docplexPath = ''
         self.solver = 'OPTW' # ou 'LKH'
         #self.tau_max = 90
         self.allocation_vidage = 3*60
@@ -373,6 +374,7 @@ class Config:
         self.declareOption("m","modes",["CPSolver"],5,IntDomain(left_bound=1),description="Indicates the number of modes considered by request.")
         self.declareOption("w","threads",["CPSolver","cpSolver"],1,IntDomain(left_bound=1),description="Indicates the number of workers")
         self.declareOption(None,"cplex",["CPSolver","LNS"],self.glob.docplexPath,PathDomain(),description="Indicates the Cplex path.")
+        #self.declareOption(None,"cplex",["CPSolver","LNS"],"",PathDomain(),description="Indicates the Cplex path.")
         # BPCCAS
         self.declareOption(None,"conserve",["BPCCAS"],False,description="Conservation mode for BPCCAS (slower): conserve all validated modes even if they violated the greedy order.")
         self.declareOption(None,"stable_exp",["BPCCAS"],False,description="Stable explication mode (slower): reject modes with explaination only if another unexplored and better ranked requests exists.")
@@ -491,10 +493,9 @@ class Config:
         for o, a in opts:
             if o=="--solver":
                 self.donnees.algo_name = a
-                break
-            if o=="cplex" and a is not None:
+            if o=="--cplex" and a is not None:
                 self.glob.docplexPath = a
-                print(a)
+                
         if self.donnees.algo_name is None:
             self.donnees.algo_name = self.getOptValue("solver")
             

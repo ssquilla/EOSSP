@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Dec 19 11:25:10 2024
+
+@author: sam
+"""
 from EOSSP.Utils.Utils import *
 from EOSSP.Utils.config import *
 
@@ -17,11 +24,9 @@ else:
     import math
     from time import time
     from time import sleep
-    import docplex.cp as cp
-    from docplex.cp.model import CpoModel,interval_var,binary_var
+    from ortools.sat.python import cp_model    
     
-    
-    class CPSolver(Solver):
+    class CPSolverOrTools(Solver):
         def __init__(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
             super().__init__(constellation,startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             self.objective = (0,0)
@@ -29,7 +34,7 @@ else:
             
         def resetModeSolver(self,constellation):
             printOpen("Generate modes")
-            self.model = CpoModel()
+            self.model = cp_model.CpModel()
             modes = []
             for r in constellation.getRequests():
                 printOpen("Generation duration for request ",r,"("+constellation.getRequest(r).getType()+")")
@@ -46,7 +51,6 @@ else:
             self.requestActivities = {}
             for (r,m) in self.modes:
                 if r!=-1:
-                    self.modeVars[(r,m)] = self.model.binary_var(name="y_"+str((r,m)))
                     self.model.add(self.modeVars[(r,m)])
                 for (s,a) in constellation.getRequest(r).getMode(m).getPairs():
                     if a not in self.requestActivities:
@@ -57,7 +61,9 @@ else:
                         end = int(math.ceil(constellation.getSatellite(s).getActivity(a).getEndDate()))
                         duration = int(math.ceil(constellation.getSatellite(s).getActivity(a).getDuration()))
                         assert(start+duration<=end)
-                        self.intervalVars[a] = self.model.interval_var(start=(start,end),end=(start,end),length=duration,name="Ia_{}_{}".format(s,a))
+                        start_var = self.model.new_int_var(0, (start,end), "start_"+str(a))
+                        end_var = self.model.new_int_var(0, (start,end), "end_"+str(a))
+                        self.intervalVars[a] = self.model.new_interval_var(start_var,duration,end_var,name="Ia_{}_{}".format(s,a))
                         self.model.add(self.intervalVars[a])
             obj1 = sum([self.noiseUtility(constellation,r,m)[0]*self.modeVars[(r,m)] for (r,m) in self.modeVars])
             self.model.maximize(obj1)
@@ -219,7 +225,7 @@ else:
             self.solution.saveSample(constellation)
             
         def initSolution(self,constellation,tlim,transitionModel,dt_construction_transition,CCAs=None,solution=None):
-            self.solution = CPSolver(constellation,self.startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
+            self.solution = CPSolverOrTools(constellation,self.startDate,transitionModel,dt_construction_transition,tlim=tlim,CCAs=CCAs,solution=solution)
             
         def getSolution(self):
             return self.solution.getSolution()
@@ -232,7 +238,7 @@ else:
     
     
 
-    class runnableCPSolver:
+    class runnableCPSolverOrTools:
         def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):
             coeurs = MPI.COMM_WORLD.Get_size()
             config.setOptValue("threads",coeurs)

@@ -165,7 +165,7 @@ class Solver:
     def getTimeElapsed(self):
         return time()-self.startDate
     
-    def getTempsRestant(self):
+    def getRemainingTime(self):
         return min(config.getOptValue("time"),self.tlim) - self.getTimeElapsed()
     
     def updateNewRequests(self,constellation,date,requestList):

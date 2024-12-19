@@ -71,12 +71,12 @@ class Operator:
     
     def computeConnectivity(self,LNS):
         self.connectCCAs = {}
-        for cca1 in LNS.getGraphComponents().getComposantes():
-            for cca2 in LNS.getGraphComponents().getComposantes():
+        for cca1 in LNS.getGraphComponents().getComponents():
+            for cca2 in LNS.getGraphComponents().getComponents():
                 if cca1<cca2:
                     if cca1 not in self.connectCCAs:
                         self.connectCCAs[cca1] = {}
-                    self.connectCCAs[cca1][cca2] = LNS.requetesEnCommunStatique(cca1,cca2)
+                    self.connectCCAs[cca1][cca2] = LNS.staticCommonRequests(cca1,cca2)
     
     def updateNewRequests(self,LNS):
         if config.getOptValue("n_cca")>1:
@@ -303,8 +303,9 @@ class VoisinageCP(Operator):
                     act = [x[1] for x in constellation.getRequest(r).getMode(m).getPairs()]
                 currentContent = [x for x in act if LNS.getGraphComponents().getActivityCCA(x) not in CCAs]
                 allowExternal = True # permet d'initialiser la sol avec ce mode
-                modes[r],externalModes[r],externalActivities[r] = constellation.getRequest(r).genererModesPresentsCCA(LNS.getGraphComponents(),constellation,currentContent,CCAs,allowExternalModes=allowExternal)
+                modes[r],externalModes[r],externalActivities[r] = constellation.getRequest(r).generateModesInCCA(LNS.getGraphComponents(),constellation,currentContent,CCAs,allowExternalModes=allowExternal)
                 for mode in modes[r]:
+                    print(mode)
                     newActivities[r][mode.getId()] = [a for a in [x[1] for x in mode.getPairs()] if a not in currentContent]
                 if len(newActivities[r])==0:
                     del newActivities[r]
@@ -450,7 +451,10 @@ class VoisinageCP(Operator):
             triesCount = 0
             while not succes and triesCount<maxTries:
                 try:
-                    sol = self.model.solve(TimeLimit = tlim,execfile=config.glob.docplexPath,Workers=self.nProcesses,log_output=None)
+                    if config.glob.docplexPath!="":
+                        sol = self.model.solve(TimeLimit = tlim,execfile=config.glob.docplexPath,Workers=self.nProcesses,log_output=None)
+                    else:
+                        sol = self.model.solve(TimeLimit = tlim,Workers=self.nProcesses,log_output=None)
                     succes = True
                 except Exception as solver_error:
                     warn(solver_error)
@@ -538,9 +542,9 @@ class VoisinageCP(Operator):
     def addIntervalVariable(self,constellation,r,a,optional):                    
         if a not in self.intervalVariables[r]:
             s = constellation.getSatelliteActivity(a)
-            start = int(math.ceil(config.glob.getScale()*constellation.getSatellite(s).getActivite(a).getDebut()))
-            end = int(math.floor(config.glob.getScale()*constellation.getSatellite(s).getActivite(a).getFin()))
-            duree = int(math.ceil(config.glob.getScale()*constellation.getSatellite(s).getActivite(a).getDuree()))
+            start = int(math.ceil(config.glob.getScale()*constellation.getSatellite(s).getActivity(a).getStartDate()))
+            end = int(math.floor(config.glob.getScale()*constellation.getSatellite(s).getActivity(a).getEndDate()))
+            duree = int(math.ceil(config.glob.getScale()*constellation.getSatellite(s).getActivity(a).getDuration()))
             self.intervalVariables[r][a] = self.model.interval_var(start=(start,end),end=(start,end),length=duree,name="Ia_"+str((r,a)))
             if optional:
                 self.intervalVariables[r][a].set_optional()
@@ -566,11 +570,11 @@ class VoisinageCP(Operator):
                     if i==j:
                         distanceMatrix[i][j] = 0
                     else:
-                        transition = config.glob.getScale()*constellation.getSatellite(s).getTransition(a1,a2,self.transitionModel)
+                        transition = config.glob.getScale()*constellation.getSatellite(s).getTransitionDuration(a1,a2,self.transitionModel)
                         distanceMatrix[i][j] = int(math.ceil(transition))
             mat = self.model.transition_matrix(distanceMatrix)
             self.sequenceCCA[idCCA] = self.model.sequence_var(variableList)
-            self.model.add(self.model.no_overlap(self.sequenceCCA[idCCA],distanceMatrix=mat))
+            self.model.add(self.model.no_overlap(self.sequenceCCA[idCCA],distance_matrix=mat))
             printClose()
             
     def initConstraints(self,LNS,constellation,CCAs,modes,externalModes,externalActivities,fixedModes):
@@ -580,7 +584,7 @@ class VoisinageCP(Operator):
         printOpen("Creating noOverlap constraints")
         self.initNoOverlap(constellation,LNS,CCAs)
         printClose()
-        obj1 = self.model.sum([self.modesVariables[r][m.getId()]*m.getRecompense() for r in modes for m in modes[r]])
+        obj1 = self.model.sum([self.modesVariables[r][m.getId()]*m.getUtility() for r in modes for m in modes[r]])
         self.model.maximize(obj1)
 
     def initConstraintsPresenceModes(self,LNS,modes,externalModes,externalActivities,fixedModes):
@@ -607,7 +611,7 @@ class VoisinageCP(Operator):
         for r in modes:
            found = False
            for m in modes[r]:
-               pais = sorted(m.getPairs())
+               pairs = sorted(m.getPairs())
                for (rr,mm) in LNS.getSelectedModes():
                    if r ==rr:
                        if sorted(constellation.getRequest(rr).getMode(mm).getPairs())==pairs:
@@ -659,7 +663,7 @@ class VoisinageCP(Operator):
                 s = constellation.getSatelliteActivity(a)
                 if t is not None:
                     start = int(math.ceil(t*config.glob.getScale()))
-                    duree = int(math.ceil(constellation.getSatellite(s).getActivite(a).getDuree()*config.glob.getScale()))
+                    duree = int(math.ceil(constellation.getSatellite(s).getActivity(a).getDuration()*config.glob.getScale()))
                     end = start+duree
                     warmstart.add_interval_var_solution(self.intervalVariables[r][a],presence=True,start=start,end=end)
                 else:
@@ -830,7 +834,7 @@ class fillingGreedyWindow(RepairingOperator):
                     act = [x[1] for x in constellation.getRequest(r).getMode(m).getPairs()]
                 currentContent = [x for x in act if LNS.getGraphComponents().getActivityCCA(x) not in CCAs] # activités externes
                 allowExternal = True # permet d'initialiser la sol avec ce mode
-                modes[r],externalModes[r],externalActivities[r] = constellation.getRequest(r).genererModesPresentsCCA(LNS.getGraphComponents(),constellation,currentContent,CCAs,allowExternalModes=allowExternal)
+                modes[r],externalModes[r],externalActivities[r] = constellation.getRequest(r).generateModesInCCA(LNS.getGraphComponents(),constellation,currentContent,CCAs,allowExternalModes=allowExternal)
                 for mode in modes[r]:
                     newActivities[r][mode.getId()] = [a for a in [x[1] for x in mode.getPairs()] if a not in currentContent]
                 if len(newActivities[r])==0:
@@ -890,8 +894,8 @@ class fillingGreedyWindow(RepairingOperator):
         currentUtility = {}
         for (r,m) in LNS.getSelectedModes():
             if r in modes:
-                currentUtility[r] = constellation.getRequest(r).getMode(m).getRecompense()
-        cle = lambda rm:rm[1].getRecompense()-currentUtility.get(r,0)
+                currentUtility[r] = constellation.getRequest(r).getMode(m).getUtility()
+        cle = lambda rm:rm[1].getUtility()-currentUtility.get(r,0)
         (req,mode) = max([(r,m) for r in modes for m in modes[r]],key=cle)
         modes[req].remove(mode)
         if len(modes[req])==0:
@@ -923,7 +927,7 @@ class fillingGreedyWindow(RepairingOperator):
                  LNS.setSelectedModes([(rr,m) for (rr,m) in LNS.getSelectedModes() if r!=r],constellation)
                  LNS.addSelectedMode((r,mode.getId()))
                  if config.getOptValue("verif"):
-                     LNS.verifierCCA(constellation)
+                     LNS.verifyCCA(constellation)
                  printClose("Success",c='g')
              else:
                 printColor("Infeasible mode",c='m')

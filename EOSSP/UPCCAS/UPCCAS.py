@@ -697,11 +697,12 @@ else:
                     self.analyzeResults(constellation,freeCPUs,mailbox,superIter)
 
                     step()
-                    printColor(self.researchState.getWorkingModes(),c='r')
-                    printColor(self.researchState.getModesWaitingForValidation(),c='y')
+                    if config.verifMode():
+                        printColor("working modes:",self.researchState.getWorkingModes(),c='r')
+                        printColor("modes waiting for validation:",self.researchState.getModesWaitingForValidation(),c='y')
                     
                     if config.getOptValue("verif"):
-                        self.verifyCCA(constellation)
+                        self.verifyCCAs(constellation)
                     """
                         stockage de la solution courante
                     """
