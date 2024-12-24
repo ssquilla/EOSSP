@@ -17,6 +17,8 @@ L'intégralité des algorithmes sont regroupés au sein d'un projet Python prés
 *lien vers l'article introduisant ImaxLNS: 
 Pralet, C.: Iterated maximum large neighborhood search for the traveling salesman problem with time windows and its time-dependent version. Computers & Operations Research 150 (2022)
 
+Le solver LKH3 est exploité en tant que solver TSPTW externe. Le code provient du site suivant : http://webhotel4.ruc.dk/~keld/research/LKH-3/
+
 **ENVIRONNEMENT**
 
 Si conda n'est pas installé, installer conda. Sur linux, miniconda peut s'installer de la manière suivante :
@@ -39,7 +41,9 @@ L'environnement conda doit être activé à chaque redémarrage du pc, mais pas 
 
 Pensez à :
 
-    - Vider les répertoires tmp de LKH de temmps en temps (contiennent des fichiers tmp si les algo se sont interrompus) : make clean
+    - Compiler les sources de LKH-3 : make all
+    
+    - Vider les répertoires tmp de LKH de temps en temps (contiennent des fichiers tmp si les algo se sont interrompus) : make clean
     
     - Aller dans le sous-repertoire EOSSP (contenant le main.py) : cd EOSSP
     
