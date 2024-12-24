@@ -1,3 +1,5 @@
+ssquilla, Samuel Squillaci, samuel.squillaci@mailfence.com
+
 **REMARQUES GENERALES**
 
 Ce projet contient les algorithmes développés à l'Onera dans le cadre de la thèse de Samuel Squillaci (https://theses.fr/2023ESAE0071), présentant les méthodes publiées notamment dans les articles suivants :
@@ -18,8 +20,8 @@ Pralet, C.: Iterated maximum large neighborhood search for the traveling salesma
 
 **ENVIRONNEMENT**
 
-si conda n'est pas installé, installer conda
-sur linux, miniconda peut s'installer de la manière suivante :
+Si conda n'est pas installé, installer conda. Sur linux, miniconda peut s'installer de la manière suivante :
+
     mkdir -p ~/miniconda3
     wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
     bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
@@ -27,6 +29,7 @@ sur linux, miniconda peut s'installer de la manière suivante :
     ~/miniconda3/bin/conda init bash
 
 Mettre en place l'environnement conda :
+
     conda env create -f envFile/envEOSSP.yml -n EOSSP
     conda activate EOSSP
     conda install python=3.6
@@ -38,15 +41,17 @@ L'environnement conda doit être activé à chaque redémarrage du pc, mais pas 
 Penser à vider les repertoires LKH : make clean
     (contient des fichiers tmp si les algo se sont interrompus)
     
-Pour exécuter les algorithmes, aller dans le sous-repertoire EOSSP (contenant le main.py)
+Pour exécuter les algorithmes, aller dans le sous-repertoire EOSSP (contenant le main.py) : cd EOSSP
+
 Exécuter via le code : mpiexec -n <Ncoeurs> python3 <algo.py> -v <indice de verbosité> -t <time> --solver=<le solver à utiliser>
+
 Exécuter via l'executable : mpiexec -n <Ncoeurs> <nom de l'exe> -v <indice de verbosité> -t <time> --solver=<le solver à utiliser>
 
 /!\ exécuter le code depuis un autre répertoire ne fonctionne pas. Python utilise le répertoire courant comme référence pour les chemins relatifs, et non le répertoire des sources.
 
 **UTILISATION**
 
-Pour connaître les options, tapez "python3 main.py -v 1 -h" ou "python3 main.py -v 1 --help"
+Pour connaître les options disponibles, tapez "python3 main.py -v 1 -h" ou "python3 main.py -v 1 --help".
 
 La commande renverra un texte similaire au texte suivant :
 
@@ -138,6 +143,8 @@ La commande renverra un texte similaire au texte suivant :
         -n || --file : Indiquer le fichier de l'instance.
         -s || --seed : Graine aléatoire.
         --include_systematic : Inclure les requêtes systématiques.
+
+/!\ Un niveau de verbosité non nul doit être indiqué afin d'afficher les informations dans la console au cours de l'éxécution ( -v <niveau de verbosité>). Par défaut, l'indices est nul.
         
 **SAUVEGARDE DES DONNEES**
 
