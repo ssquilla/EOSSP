@@ -1,0 +1,10 @@
+**/__pycache__
+**/*.optw
+**/*.tsptw
+**/*.init
+**/*.par
+**/*.tour
+git ignore EOSSP/EOSSP/build
+git EOSSP/EOSSP/dist
+
+
