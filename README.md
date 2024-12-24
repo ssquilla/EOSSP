@@ -40,8 +40,9 @@ L'environnement conda doit être activé à chaque redémarrage du pc, mais pas 
 **NOTICE DES ALGO**
 
 Pensez à :
-
-    - Vider les répertoires tmp de LKH de temmps en temps (contiennent des fichiers tmp si les algo se sont interrompus) : make clean
+    - Compiler les sources de LKH-3 : make all
+    
+    - Vider les répertoires tmp de LKH de temps en temps (contiennent des fichiers tmp si les algo se sont interrompus) : make clean
     
     - Aller dans le sous-repertoire EOSSP (contenant le main.py) : cd EOSSP
     
