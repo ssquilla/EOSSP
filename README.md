@@ -5,8 +5,7 @@ ssquilla, Samuel Squillaci, samuel.squillaci@mailfence.com
 Ce projet contient les algorithmes développés à l'Onera dans le cadre de la thèse de Samuel Squillaci (https://theses.fr/2023ESAE0071), présentant les méthodes publiées notamment dans les articles suivants :
 
 - Squillaci, Samuel et Roussel, Stéphanie et Pralet, Cédric : «Parallel Scheduling of Complex Requests  for a Constellation of Earth Observing Satellites». Dans : Passerini, A., Schiex, T. (eds.). Frontiers in Artificial Intelligence and Applications. IOS Press 2022.
-- Squillaci, Samuel et Roussel, Stéphanie et Pralet, Cédric : «Scheduling Complex Observation Requests for a Constellation of Satellites: Large Neighborhood Search Approaches». Dans : CPAIOR 2023. https://link.springer.
-com/chapter/10.1007/978-3-031-33271-5_29
+- Squillaci, Samuel et Roussel, Stéphanie et Pralet, Cédric : «Scheduling Complex Observation Requests for a Constellation of Satellites: Large Neighborhood Search Approaches». Dans : CPAIOR 2023. https://link.springer.com/chapter/10.1007/978-3-031-33271-5_29
 - Squillaci, Samuel et Roussel, Stéphanie et Pralet, Cédric : «Comparison of time-dependent and time-independent scheduling approaches for a constellation of Earth observing satellites». Dans : IWPSS 2023. https://drive.com/file/d/1D_5v45e4jTcrSGwc9cQkHLRqb8xF0Tz2/view (p.96)
 
 L'intégralité des algorithmes sont regroupés au sein d'un projet Python présentant diverses options. Le code fourni peut présenter des résultats légèrement différents des articles pour les raisons suivantes :
