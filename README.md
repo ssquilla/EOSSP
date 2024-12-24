@@ -38,10 +38,10 @@ L'environnement conda doit être activé à chaque redémarrage du pc, mais pas 
 
 **NOTICE DES ALGO**
 
-Penser à vider les repertoires LKH : make clean (contiennent des fichiers tmp si les algo se sont interrompus).
-Pour exécuter les algorithmes, aller dans le sous-repertoire EOSSP (contenant le main.py) : cd EOSSP
-Exécuter via le code : mpiexec -n <Ncoeurs> python3 <algo.py> -v <indice de verbosité> -t <time> --solver=<le solver à utiliser>
-Exécuter via l'executable : mpiexec -n <Ncoeurs> <nom de l'exe> -v <indice de verbosité> -t <time> --solver=<le solver à utiliser>
+make clean # pour vider les répertoires tmp de LKH (contiennent des fichiers tmp si les algo se sont interrompus).
+cd EOSSP # pour exécuter les algorithmes, aller dans le sous-repertoire EOSSP (contenant le main.py) 
+mpiexec -n <Ncoeurs> python3 main.py -v <indice de verbosité> -t <time> --solver=<le solver à utiliser> # pour
+
 /!\ Exécuter le code depuis un autre répertoire ne fonctionne pas. Python utilise le répertoire courant comme référence pour les chemins relatifs, et non le répertoire des sources.
 
 **UTILISATION**
