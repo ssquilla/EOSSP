@@ -51,7 +51,7 @@ else:
             self.requestActivities = {}
             for (r,m) in self.modes:
                 if r!=-1:
-                    self.model.add(self.modeVars[(r,m)])
+                    self.modeVars[(r,m)] = self.model.new_binary_var("y_"+str((r,m)))
                 for (s,a) in constellation.getRequest(r).getMode(m).getPairs():
                     if a not in self.requestActivities:
                         self.requestActivities[a] = []
@@ -61,13 +61,12 @@ else:
                         end = int(math.ceil(constellation.getSatellite(s).getActivity(a).getEndDate()))
                         duration = int(math.ceil(constellation.getSatellite(s).getActivity(a).getDuration()))
                         assert(start+duration<=end)
-                        start_var = self.model.new_int_var(0, (start,end), "start_"+str(a))
-                        end_var = self.model.new_int_var(0, (start,end), "end_"+str(a))
-                        self.intervalVars[a] = self.model.new_interval_var(start_var,duration,end_var,name="Ia_{}_{}".format(s,a))
-                        self.model.add(self.intervalVars[a])
+                        start_var = self.model.new_int_var(start,end,"start_"+str(a))
+                        end_var = self.model.new_int_var(start,end,"end_"+str(a))
+                        presence_of = self.model.new_bool_var("presence_"+str(a))
+                        self.intervalVars[a] = self.model.new_optionnal_interval_var(start_var,duration,end_var,name="Ia_{}_{}".format(s,a))
             obj1 = sum([self.noiseUtility(constellation,r,m)[0]*self.modeVars[(r,m)] for (r,m) in self.modeVars])
             self.model.maximize(obj1)
-            #self.model.maximize(obj2)
             printClose()
             
         def initConstraints(self,constellation):
@@ -235,8 +234,6 @@ else:
             
         def getModesSolution(self):
             return self.solution.getSelectedModes()
-    
-    
 
     class runnableCPSolverOrTools:
         def execute(self,constellation,startDate,transitionModel,dt_construction_transition,tlim=np.Inf,CCAs=None,solution=None):

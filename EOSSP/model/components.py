@@ -141,6 +141,7 @@ class StaticCCAsGroup:
     def __init__(self,constellation,activities,transitionModel,parallel=True):
         self.tau_max = transitionModel.getTransititionDurationUpperBound()
         self.ccaActivity = {}
+        self.cca_sat = {}
         if parallel:
             # on parallelise le calcul des composantes
             allocatedSatellites = self.allocateSatellites(activities)
@@ -196,7 +197,7 @@ class StaticCCAsGroup:
             self.satelliteCCA[s].append(indice)
         else:
             self.mergeListOfComponents(components_trouvees)
-            
+                    
     def mergeListOfComponents(self,liste_components):
         assert(len(liste_components)>0)
         if len(liste_components)==1:
@@ -246,7 +247,9 @@ class StaticCCAsGroup:
             if s not in self.satelliteCCA:
                 self.satelliteCCA[s] = []
             self.satelliteCCA[s].append(cca)
-     
+            if (s,cca) not in self.cca_sat:
+                self.cca_sat[(s,cca)] = s
+
     def deleteActivity(self,a):
         cca = self.ccaActivity[a]
         self.sizes[cca] -= 1
@@ -273,6 +276,9 @@ class StaticCCAsGroup:
     def getCCASatellite(self,s):
         return self.satelliteCCA[s]
 
+    def getSatelliteCCA(self,cca):
+        return self.cca_sat[cca]
+    
     def getActivityCCA(self,a):
         return self.ccaActivity[a]
 
@@ -306,7 +312,7 @@ class StaticCCAsGroup:
         mess += "| size of shortest component: "+str(min_taille)+'\n'
         mess += "| size of largest component: " + str(max_taille)+'\n'
         mess += "| size of mean component: " + str(mean_taille)+'\n'
-        mess += "| std of component sizes :" + str(std_taille)+'\n'
+        mess += "| std of component sizes: " + str(std_taille)+'\n'
         return mess
 
 class PrecomputedStaticComponents(StaticCCAsGroup):
@@ -325,7 +331,7 @@ class PrecomputedStaticComponents(StaticCCAsGroup):
                         if(idObs in self.ccaActivity):
                             raise ValueError("Wrong activities numbering: ",idObs,self.ccaActivity[idObs],(s,num_cca))
                         try: # verifier que l'obs ne fait pas partie des requetes supprimees (systematiques)
-                            constellation.getRequeteActivite(idObs)
+                            constellation.getRequestAtivity(idObs)
                             count += 1
                             activities.append(constellation.getActivity(idObs))
                             self.ccaActivity[idObs] = (s,num_cca)
@@ -350,7 +356,7 @@ class DynamicDependencyGraphOfActivities:
         for s in activities:
             for a in activities[s]:
                 startDate = constellation.getSatellite(s).getActivity(a).getStartDate()
-                END = constellation.getSatellite(s).getActivity(a).getEndDate() + self.tau_max
+                endDate = constellation.getSatellite(s).getActivity(a).getEndDate() + self.tau_max
                 
                 points = []
                 points.append(ActivityDateEvent(s,startDate,a,self.START))
@@ -378,14 +384,17 @@ class DynamicDependencyGraphOfActivities:
         
         self.cca_sat = {}
         self.satelliteCCA = {}
-        for s in activites:
-            for a in activites[s]:
+        for s in activities:
+            for a in activities[s]:
                 cca = self.getActivityCCA(a)
                 self.cca_sat[cca] = s
                 if s not in self.satelliteCCA:
                     self.satelliteCCA[s] = []
                 self.satelliteCCA[s].append(cca)
     
+    def getConnectedComponent(self, cca):
+        self.getCCA(cca)
+        
     def getCCA(self,cca):
         return self.graphOfActivities.components[cca]
     
@@ -412,6 +421,9 @@ class DynamicDependencyGraphOfActivities:
     
     def getActivityCCA(self,a):
         return self.graphOfActivities.getVertex(a).getConnectedComponent()
+    
+    def getConnectedComponents(self):
+        return self.getComponents()
     
     """
         =================================================
@@ -537,7 +549,7 @@ class DynamicDependencyGraphOfActivities:
             if a not in self.graphOfActivities.getVertices():
                 self.graphOfActivities.addActivity(a)
             for a2 in activeActivities:
-                self.graphOfActivities.lierActivites(a,a2,MAJComposantes=False)
+                self.graphOfActivities.linkActivities(a,a2,MAJComponents=False)
             activeActivities.append(a)
 
     def _deactivateActivity(self,constellation,s,activeActivities,a):

@@ -362,14 +362,14 @@ class Config:
         self.options = {}
         # name,algos,defaut_value=None,domain=None
         self.declareOption(None,"step",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activate step by step mode (when compatible)")
-        self.declareOption(None,"sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],None,PathDomain(deactivable=True),description="Indicates a path to save the results.")
         self.declareOption("v","verbose",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver","dataVisu"],0,IntDomain(left_bound=0),description="Indicates the display depth.")
         self.declareOption("o","verif",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activate to proceed the implemented checks during execution (slower, safer).")
         self.declareOption(None,"full_sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activate to add supplementary information in samples.")
         self.declareOption("t","time",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],5,FloatDomain(left_bound=0),description="Set the time limit (in seconds).")
-        #self.declareOption(None,"obj",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Activer to export the objective curve.")
-        #self.declareOption(None,"cpu",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Activer pour créer le graphique de charge de coeurs.")
-        #self.declareOption(None,"charge",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Graphe de charge des composantes.")
+        self.declareOption(None,"sample",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],None,PathDomain(deactivable=True),description="Indicates a path to save the results.")
+        self.declareOption(None,"obj",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Export the objective curve.")
+        self.declareOption(None,"cpu",["timeDependentSolver","BPCCAS","UPCCAS","LNS"],False,description="Export the load of each process.")
+        self.declareOption(None,"ccaload",["timeDependentSolver","BPCCAS","UPCCAS","LNS","CPSolver"],False,description="Export the load of connected components.")
         # solvers CP
         self.declareOption("m","modes",["CPSolver"],5,IntDomain(left_bound=1),description="Indicates the number of modes considered by request.")
         self.declareOption("w","threads",["CPSolver","cpSolver"],1,IntDomain(left_bound=1),description="Indicates the number of workers")

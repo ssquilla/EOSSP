@@ -125,7 +125,7 @@ class Graph:
         if self.oriented:
             self.vertices[label] = self.OrientedNode(label,data)
         else:
-            self.vertices[label] = self.NonOrientedVertex(label,data)
+            self.vertices[label] = self.NonOrientedVertex(label)
         
         self.components[label] = self.ConnectedComponent([label])
         

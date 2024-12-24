@@ -7,12 +7,14 @@ import pickle
 from copy import deepcopy
 import operator
 
-#import matplotlib.pyplot as plt
-#from matplotlib import patches
+import matplotlib.pyplot as plt
+from matplotlib import patches
 
 from EOSSP.model.constellation import TYPE_LONG_MONO,TYPE_MONO,TYPE_PERIODIC,TYPE_STEREO,TYPE_SYSTEMATIC,TYPE_DOWNLOAD
 
 from EOSSP.Utils.config import *
+from EOSSP.Utils.Utils import alert
+
 global config
 config = Config()
 
@@ -202,7 +204,7 @@ class History:
             max_run = 0
             self.generatedModes = {}
             for r in constellation.getRequests():
-                self.generatedModes[r] = constellation.getRequest(r).getModesGeneres()
+                self.generatedModes[r] = constellation.getRequest(r).countGeneratedModes()
             self.meanScoreAfter = constellation.meanObservationScore(self.bestSelectedModes)
             for root,dirs,files in os.walk(folder+"/"):
                 max_run = len(files)
@@ -455,13 +457,14 @@ class History:
     
     def deleteLastPoint(self):
         self.historic.pop(-1)    
-    """
+    
     def plotCPU(self):
         f,ax = plt.subplots(figsize=(15,6))
         plt.xlabel('time (s)')
         plt.ylabel('CPU index')
         tps_max = 0
         tps_min = np.Inf
+        send_handle = None
         for cpu in self.stats['calculs']:
             for (t_start,duree) in self.stats['calculs'][cpu]:
                 tps_max = max(tps_max,t_start+duree)
@@ -477,12 +480,15 @@ class History:
                 tps_max = max(tps_max,t_start+duree)
                 tps_min = min(tps_min,t_start)
                 send_handle = ax.add_patch(patches.Rectangle((t_start, cpu),duree,1,facecolor = 'orange',fill=True,label='send to slave') )            
-        plt.legend(handles=[send_handle,calcul_handle,rcv_handle])
-        plt.title('cpu occupation')
-        plt.title('cpu occupation : '+self.formatInstance()+"_"+str(self.Ncores)+" ; obj = "+str(self.bestObjective))
-        plt.ylim(0,max(list(self.stats["envoi"].keys()))+1)
-        plt.xlim(tps_min,tps_max)
-        plt.savefig("../results/cpu/"+config.getOptValue("solver")+"_"+self.formatInstance()+"_"+str(self.Ncores)+".png")
+        if send_handle is not None:
+            plt.legend(handles=[send_handle,calcul_handle,rcv_handle])
+            plt.title('cpu occupation')
+            plt.title('cpu occupation : '+self.formatInstance()+"_"+str(self.Ncores)+" ; obj = "+str(self.bestObjective))
+            plt.ylim(0,max(list(self.stats["envoi"].keys()))+1)
+            plt.xlim(tps_min,tps_max)
+            plt.savefig("../results/cpu/"+config.getOptValue("solver")+"_"+self.formatInstance()+"_"+str(self.Ncores)+".png")
+        else:
+            alert("Nothing has been planned: nothing can be plotted. Please check the time limit.")
         return f
     
     # init = False => ne pas inclure le premier point (obj = 0)
@@ -530,4 +536,4 @@ class History:
         algo = str(config.getOptValue("solver"))
         plt.savefig("../results/charge_cca/charge_"+instance + "_" +algo + "_" +str(MPI.COMM_WORLD.Get_size())+"_proc.png")
         return f           
-    """
+    

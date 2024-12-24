@@ -261,7 +261,7 @@ class RequestDestructor(Perturbator):
             return LNS.getObjective(constellation)>oldObjective
 class VoisinageCP(Operator):
     def __init__(self,nProcesses,transitionModel,k=2,iterOperator=1):
-        super().__init__("CP neighborhood of a CCAs set",transitionModel,k=k)
+        super().__init__("CP-based CCAs set neighborhood",transitionModel,k=k)
         self.nProcesses = nProcesses
         #self.positions_cca = None
         self.iterOperator = iterOperator
@@ -305,7 +305,6 @@ class VoisinageCP(Operator):
                 allowExternal = True # permet d'initialiser la sol avec ce mode
                 modes[r],externalModes[r],externalActivities[r] = constellation.getRequest(r).generateModesInCCA(LNS.getGraphComponents(),constellation,currentContent,CCAs,allowExternalModes=allowExternal)
                 for mode in modes[r]:
-                    print(mode)
                     newActivities[r][mode.getId()] = [a for a in [x[1] for x in mode.getPairs()] if a not in currentContent]
                 if len(newActivities[r])==0:
                     del newActivities[r]
@@ -376,7 +375,7 @@ class VoisinageCP(Operator):
         delta_score = round(LNS.getObjective()[0]-utilityBefore,3)
         if not delta_score>=0:
             LNS.setSelectedModes(copyModes,constellation)
-            LNS.verifySolutionIfVerifyMode(constellation) 
+            LNS.verifySolutionIfVerifyMode(constellation)
             return False,delta_score
         
         self.fillSolCCAs(constellation,LNS,sol)
@@ -390,7 +389,6 @@ class VoisinageCP(Operator):
             idFile = max([int(file.split('_')[-1]) for file in os.listdir("error_logs/solver_errors")])+1
         path = "error_logs/solver_errors/model_"+problem+"_"+str(CCAs)+"_id_"+str(idFile)
         self.model.export_model(path)
-        alert("EchangeCP : pas de solution trouvée pour "+str(CCAs)+" : id="+str(idFile))
         with open(path,"a") as file:
             for (s,cca) in CCAs:
                 file.write(str(LNS.getSolCCA(s,cca))+"\n")
@@ -427,10 +425,10 @@ class VoisinageCP(Operator):
          existsCCAEmpty = True
          shiftRightDisplay(2)
          while existsCCAEmpty:
-             printOpen("Sélection des CCA")
+             printOpen("CCA set selection")
              CCAs,presentRequests = self.selectCCAs(LNS,constellation)
              printClose()
-             printOpen("Génération des modes")
+             printOpen("Modes generation")
              modes,newActivities,externalModes,externalActivities = self._extractModes(LNS,constellation,CCAs,presentRequests)       
              fixedModes = self.selectFixedModes(LNS, modes,newActivities,externalModes,externalActivities)
              existsCCAEmpty = self.checkEmptyCCA(LNS,newActivities,CCAs)
@@ -458,8 +456,11 @@ class VoisinageCP(Operator):
                     succes = True
                 except Exception as solver_error:
                     warn(solver_error)
-                    alert("Memory error in the CP Solver",CCAs)
-                    self.recordError(LNS,"memory_pb",None,CCAs)
+                    try:
+                        alert("Internal error within the CP Solver for cca ",CCAs)
+                        self.recordError(LNS,"internal_error",None,CCAs)
+                    except Exception:
+                        printColor(e)
                     triesCount += 1
             t2 = time()
             printClose()
@@ -507,7 +508,7 @@ class VoisinageCP(Operator):
         printOpen("Model construction")
         self.model = CpoModel()
         printClose()
-        printOpen("IVariables initialization")
+        printOpen("Variables initialization")
         self.initVars(LNS,constellation,modes,CCAs,newActivities,fixedModes)
         printClose()
         printOpen("Constraints initialization")
@@ -683,7 +684,7 @@ class VoisinageCP(Operator):
                     m = [mm for (rr,mm) in LNS.getSelectedModes() if rr==r][0]
                     print(constellation.getRequest(r).getMode(m))
                     print(r in fixedModes,r in modes)
-                    print("modes of request r :")
+                    print("modes of request r:")
                     for m in modes[r]:
                         print(m)
                 seq.append(self.intervalVariables[r][a])

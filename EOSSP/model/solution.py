@@ -13,9 +13,9 @@ import pickle
 
 from copy import deepcopy,copy
 
-#import matplotlib
-#from matplotlib import patches
-#import matplotlib.pyplot as plt
+import matplotlib
+from matplotlib import patches
+import matplotlib.pyplot as plt
 import os
 
 class Solver:
@@ -989,7 +989,7 @@ class Solver:
                         print("modes of the request")
                         for m in constellation.getRequest(r).modes:
                             print(constellation.getRequest(r).getMode(m))
-                        raise ValueError(coeur,"time: ",time()-self.startDate,'activity with no mode',s,o,cca,typ,r,".Fulfilled requests:",r in self.fulfilledRequests())
+                        raise ValueError(coeur,"time: ",time()-self.startDate,'activity with no mode',s,o,cca,typ,r,". Fulfilled requests:",r in self.fulfilledRequests())
     
     def verifyCCAs(self,constellation):
         for s in self.getSolCCAs():
@@ -1025,13 +1025,13 @@ class Solver:
                         endDate = constellation.getSatellite(s).getActivity(p).getEndDate()
                         printColor("activity", (s,p),"date",t,'duration',duration,"window",startDate,endDate,c='r')
                         print([(p,self.dependenciesGraph.getActivityCCA(p),t) for (p,t) in self.plan[s]])
-                        raise ValueError('window tardiness:CCAs solutions are maybe disordered')
+                        raise ValueError('window tardiness: CCAs solutions are maybe disordered')
 
     def verifyActiveRequests(self,constellation):
         if config.getOptValue("dynamic"):
             for (r,m) in self.solution.selectedModes:
                 if not constellation.getRequest(r).estActif():
-                    raise ValueError("Requête inactive")
+                    raise ValueError("Inactive request " + str((r,m)))
         
     def verifySolutionIfVerifyMode(self,constellation,transitionModel=None):
         if config.getOptValue("verif"):

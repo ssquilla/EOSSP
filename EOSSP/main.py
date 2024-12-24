@@ -23,8 +23,9 @@ if __name__ == '__main__' and __package__ is None:
 """
 Created on Tue Jan 10 16:29:22 2023
 
-@author: ssquilla
+@author: ssquilla, Squillaci Samuel.
 """
+
 from EOSSP.Utils.config import *
 from EOSSP.Utils.Utils import *
 global config
@@ -73,7 +74,7 @@ else:
                 printColor("\n")
                 printColor("Resolution parameters:",c='b')
                 printColor("| instance: "+str(instance),c='b')
-                printColor("| time limit: "+str(config.getOptValue("time")/60),c='b')
+                printColor("| time limit: "+str(config.getOptValue("time")) + " (s)",c='b')
                 printColor("\n")
                 file = choseAndBroadcastFile(path,instance)
                 comm.Barrier()
@@ -176,13 +177,15 @@ else:
                 solutionContainer = runnableSolver.execute(constellation,startDate,transitionModel,deltaTimeTransition,CCAs=components)
             
             masterSolver = runnableSolver.getMasterSolver()
-                
+            
             if masterSolver is not None: # not None seulement dans le cas du Master
-                if config.getOptValue("cpu"):
-                    masterSolver.tracerCPU()
-                if config.getOptValue("obj"):
-                    masterSolver.tracerObjectif()
                 if config.getOptValue("sample") is not None:
-                    masterSolver.saveSample(constellation)    
-                if config.getOptValue("charge"):
-                    masterSolver.tracerChargeCCAs()
+                    masterSolver.saveSample(constellation)  
+                
+                if config.getOptValue("cpu"):
+                    masterSolver.plotCPU()
+                if config.getOptValue("obj"):
+                    masterSolver.plotObjective()
+                if config.getOptValue("ccaload"):
+                    masterSolver.plotCCAsLoad()
+            

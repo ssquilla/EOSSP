@@ -27,6 +27,7 @@ sur linux, miniconda peut s'installer de la manière suivante :
 Mettre en place l'environnement conda :
     conda env create -f envFile/envEOSSP.yml -n EOSSP
     conda activate EOSSP
+    conda install python=3.6
 
 L'environnement conda doit être activé à chaque redémarrage du pc, mais pas nécessairement recréé.
 

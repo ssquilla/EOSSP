@@ -32,17 +32,17 @@ from EOSSP.Utils.config import *
 global config
 config = Config()
 instance = config.instance
-from EOSSP.model.modelTransition import modelTransitionTimeDependent
-from EOSSP.model.composantes import ComposantesStatiquesPrecalculees
+from EOSSP.model.transitionModel import TimeDependentTransitionModel, SlowModel
+from EOSSP.model.components import PrecomputedStaticComponents
 from mpi4py import MPI
 if config.getOptValue("help"):
     if MPI.COMM_WORLD.Get_rank()==0:
-        config.afficherAide()
+        config.displayHelp()
 else: 
     from EOSSP.Utils.Utils import *
     from EOSSP.model.constellation import Constellation
-    from EOSSP.model.composantes import *
-    from EOSSP.model.solution_composantes import *
+    from EOSSP.model.components import *
+    from EOSSP.model.componentPlan import *
     import pandas as pd
     import geopandas as gpd
     import matplotlib.pyplot as plt
@@ -66,10 +66,10 @@ else:
     def drawScoreMap(file,constellation):
         def getDates(constellation):
             times = []
-            for r in constellation.getRequetes():
-                for (s,o) in constellation.getRequete(r).getCouples():
-                    debut = floor(round(constellation.getSatellite(s).getActivite(o).getDebut(),2))
-                    fin = ceil(round(constellation.getSatellite(s).getActivite(o).getFin(),2))
+            for r in constellation.getRequests():
+                for (s,o) in constellation.getRequest(r).getPairs():
+                    debut = floor(round(constellation.getSatellite(s).getActivity(o).getStartDate(),2))
+                    fin = ceil(round(constellation.getSatellite(s).getActivity(o).getEndDate(),2))
                     if debut not in times:
                         bisect.insort_left(times, debut)
                     if fin not in times:
@@ -82,12 +82,12 @@ else:
                 if i<len(times)-1:
                     time_interval = (t,times[i+1])
                 obs_liste = []
-                for r in constellation.getRequetes():
-                    for (s,a) in constellation.getRequete(r).getCouples():
-                        interval_act = (constellation.getSatellite(s).getActivite(a).getDebut(),constellation.getSatellite(s).getActivite(a).getFin())
+                for r in constellation.getRequests():
+                    for (s,a) in constellation.getRequest(r).getPairs():
+                        interval_act = (constellation.getSatellite(s).getActivity(a).getStartDate(),constellation.getSatellite(s).getActivity(a).getEndDate())
                         if intersect(interval_act, time_interval):
-                            coord = constellation.getSatellite(s).getActivite(a).getCoordonnees()
-                            score = constellation.getSatellite(s).getActivite(a).getScore()
+                            coord = constellation.getSatellite(s).getActivity(a).getCoordinates()
+                            score = constellation.getSatellite(s).getActivity(a).getScore()
                             obs_liste.append((coord,score))
                 obs_by_dates[t] = obs_liste
             return obs_by_dates
@@ -100,49 +100,49 @@ else:
             return score*right+(1-score)*left
         
         def drawMapSubsetObs(constellation,obs_at_date):
-            df = pd.DataFrame(columns=["Couleur","Latitude","Longitude"])
+            df = pd.DataFrame(columns=["Color","Latitude","Longitude"])
             for (coord,score) in obs_at_date:
-                df.append({"Couleur":couleur(score),"Latitude":coord[0],"Longitude":coord[1]},ignore_index=True)
+                df.append({"Color":couleur(score),"Latitude":coord[0],"Longitude":coord[1]},ignore_index=True)
             gdf = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
-            print(gdf.head())
+            #print(gdf.head())
             world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
             ax = world[world.continent == 'Europe'].plot(color='green', edgecolor='black',alpha=0.5)
             ax.set_facecolor('#A8C5DD')
             gdf.plot(ax=ax,color='red')
             plt.show()
         if MPI.COMM_WORLD.Get_rank()==0:
-            print("Démarrage ...")
+            print("Starting ...")
             times = getDates(constellation)
-            print("Points temporels crées")
+            print("Temporal points created")
             obs_by_date = getObsByDates(constellation,times)
-            print("Observations réparties par dates")
+            print("Observations dispatched by date")
             Tstart = times[0]
             print([len(obs_by_date[t]) for t in obs_by_date])
             drawMapSubsetObs(constellation,obs_by_date[Tstart])
-            print("Dessin de la carte des scores")
+            print("Drawing the score map")
     
     def drawTransition(file,constellation):
-        print("Construction du modèle de transition ...")
+        print("Building transition model ...")
         splitted = file.split("/")
         folder = ""
         for i,x in enumerate(splitted):
             if i<len(splitted)-1:
                 folder += x + "/"
         folder +="components"
-        modele = modelTransitionTimeDependent(folder)
-        print("Lecture des composantes ...")
-        CCAs = ComposantesStatiquesPrecalculees(constellation,folder)
+        modele = TimeDependentTransitionModel(folder)
+        print("Reading components ...")
+        CCAs = PrecomputedStaticComponents(constellation,folder)
         print("OK.")
         nCouples = 10
-        ccas_candidates = [c for c in CCAs.composantes.keys() if len(CCAs.getActivitesComposante(c))>nCouples]
+        ccas_candidates = [c for c in CCAs.getComponents().keys() if len(CCAs.getActivitiesOfComponent(c))>nCouples]
         cca = rd.choice(list(ccas_candidates))
         f,axs = plt.subplots(nCouples,nCouples)
-        activites = rd.choices(CCAs.getActivitesComposante(cca),k=nCouples)
+        activites = rd.choices(CCAs.getActivitiesOfComponent(cca),k=nCouples)
         for i,a1 in enumerate(activites):
             for j,a2 in enumerate(activites):
-                points = modele.getPointsDeControle(a1,a2)
+                points = modele.getControlPoints(a1,a2)
                 axs[i][j].plot([p[0] for p in points],[p[1] for p in points])
-                axs[i][j].set_title("activités "+str((a1,a2)))
+                axs[i][j].set_title("activities "+str((a1,a2)))
         plt.show()
         
     def drawTargetsMap(file,constellation,details=True):
@@ -157,18 +157,16 @@ else:
             return col_type[type_req]
         
         if MPI.COMM_WORLD.Get_rank()==0:
-            df = pd.DataFrame(columns=["Requête","Latitude","Longitude"])
-            for r in constellation.getRequetes():
-                xyz = constellation.getRequete(r).getMeanTarget(constellation)
-                df = df.append({"Requête":int(r),'Latitude':xyz[0],"Longitude":xyz[1]},True)
-            df['Requête'] = df['Requête'].astype(int)
+            df = pd.DataFrame(columns=["Request","Latitude","Longitude"])
+            for r in constellation.getRequests():
+                xyz = constellation.getRequest(r).getMeanTarget(constellation)
+                df = df.append({"Request":int(r),'Latitude':xyz[0],"Longitude":xyz[1]},True)
+            df['Request'] = df['Request'].astype(int)
             
-            xyz,minP,maxP,N = constellation.statsCoordonnees()
-            #print("min coord",minP,"max coord",maxP)
+            xyz,minP,maxP,N = constellation.statsCoordinates()
             gdf = gpd.GeoDataFrame(
                 df, geometry=gpd.points_from_xy(df.Longitude, df.Latitude))
-            #gdf['colour'] = [couleur(constellation,r) for r in gdf['Requête']]
-            gdf['type'] = [constellation.getRequete(r).getType() for r in gdf['Requête']]
+            gdf['type'] = [constellation.getRequest(r).getType() for r in gdf['Request']]
             world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
             ax = world[world.continent == 'Europe'].plot(
                 color='#b9f9b2', edgecolor='black',alpha=0.5) 
@@ -183,9 +181,9 @@ else:
             else:
                 gdf.plot(ax=ax,color='black',marker='.',label='target')
                 plt.legend(fontsize=30,loc='upper right')
-            printColor('Info points :',c='r')
+            printColor('Info points:',c='r')
             printColor("| "+str(len(gdf))+" points")
-            printColor("| "+str(len(pd.unique(gdf["geometry"])))+" valeurs différentes")
+            printColor("| "+str(len(pd.unique(gdf["geometry"])))+" different values")
             plt.show()
     
     def drawCCAs(filename,constellation):
@@ -200,7 +198,7 @@ else:
                             cca_working[i] = 1
                             found = True
                             cca = liste_cca[i]
-                            traiterCCA(constellation,info_cca,cca,grapheDependances)
+                            computeCCAsInfo(constellation,info_cca,cca,grapheDependances)
                             break
                 if not found:
                     done = True
@@ -217,24 +215,24 @@ else:
                 MPI.COMM_WORLD.send(info_cca,dest=0)
             MPI.COMM_WORLD.Barrier()
             
-        def traiterCCA(constellation,info_cca,cca,grapheDependances):
+        def computeCCAsInfo(constellation,info_cca,cca,grapheDependances):
             debut = np.Inf
             fin = -np.Inf
             minLat,minLong = np.Inf,np.Inf
             maxLat,maxLong = -np.Inf,-np.Inf
             liste_lat = []
             liste_long = []
-            s = grapheDependances.getSatelliteCCA(cca)
-            for a in grapheDependances.getComposanteConnexe(cca):
-                activite = constellation.getActivite(a)
-                debut = min(debut,activite.getDebut())
-                fin = max(activite.getFin(),fin)
-                minLat = min(minLat,activite.getCoordonnees()[0])
-                minLong = min(minLong,activite.getCoordonnees()[1])
-                maxLat = max(maxLat,activite.getCoordonnees()[0])
-                maxLong = max(maxLong,activite.getCoordonnees()[1])
-                liste_lat.append(activite.getCoordonnees()[0])
-                liste_long.append(activite.getCoordonnees()[1])
+            s = cca[0]
+            for a in grapheDependances.getConnectedComponent(cca).getElements():
+                activite = constellation.getActivity(a)
+                debut = min(debut,activite.getStartDate())
+                fin = max(activite.getEndDate(),fin)
+                minLat = min(minLat,activite.getCoordinates()[0])
+                minLong = min(minLong,activite.getCoordinates()[1])
+                maxLat = max(maxLat,activite.getCoordinates()[0])
+                maxLong = max(maxLong,activite.getCoordinates()[1])
+                liste_lat.append(activite.getCoordinates()[0])
+                liste_long.append(activite.getCoordinates()[1])
             N = len(liste_lat)
             if N==1:
                 info_cca[cca] = {"sat":s,"cca":cca,"time":(debut,fin),"shape":Point(liste_long[0],liste_lat[0])}
@@ -245,8 +243,8 @@ else:
                 polygon_geom = Polygon(liste_coord).convex_hull
                 info_cca[cca] = {"sat":s,"cca":cca,"time":(debut,fin),"shape":polygon_geom}
             
-        def initListeCCAATraite(grapheDependances):
-            liste_cca = grapheDependances.getComposantes()
+        def initCCAList(grapheDependances):
+            liste_cca = grapheDependances.getComponents()
             """ init une liste partagee de booleen sur les cca restantes a traiter """
             size = len(liste_cca) 
             itemsize = MPI.BOOL.Get_size() 
@@ -263,11 +261,11 @@ else:
             return liste_cca,cca_working
             
         def buildInfoCCA(constellation):
-            activites = constellation.extraireActivitesRequetes()
-            printMaster("Création des composantes connexes ...")
-            grapheDependances = GroupeComposantesActivitesStatiques(constellation,activites)
+            activites = constellation.extractActivitiesFromRequests()
+            printMaster("Creating connected components ...")
+            grapheDependances = StaticCCAsGroup(constellation,activites, SlowModel)
             printMaster(grapheDependances,c='b')
-            liste_cca,cca_working = initListeCCAATraite(grapheDependances)
+            liste_cca,cca_working = initCCAList(grapheDependances)
             info_cca = loopCCAJob(constellation,liste_cca,cca_working,grapheDependances)
             fusionnerInfoCCA(info_cca)
             return info_cca
@@ -302,7 +300,7 @@ else:
             testInt = lambda inter : inter[0]<= T and inter[1]>=T
             gdf_plot = gdf[gdf["time"].apply(testInt)]
             if len(gdf_plot)>0:
-                gdf_plot.plot(alpha=0.4,ax=ax ,edgecolor='k',color=gdf_plot['couleur'])
+                gdf_plot.plot(alpha=0.4,ax=ax ,edgecolor='k',color=gdf_plot['color'])
                 plt.legend(["satellite " + str(sat) for sat in gdf_plot['sat']],loc='upper right')
             ax.set_xlim(Xlim)
             ax.set_ylim(Ylim)
@@ -333,13 +331,13 @@ else:
             df = pd.DataFrame(columns=["cca","time","shape"])
             for cca in info_cca:
                 df = df.append(info_cca[cca],ignore_index=True)
-            df['cca'] = df['cca'].astype(int)
             df['sat'] = df['sat'].astype(int)
+            #df['cca'] = df['cca'].astype(int)
             cmap = get_cmap(len(df['sat'].value_counts()))
             Ncca = len(df['cca'])
             gdf = gpd.GeoDataFrame(df, geometry=df["shape"])
             Nsat = len(list(constellation.getSatellites().keys()))
-            gdf['couleur'] = gdf["sat"].apply(lambda s : cmap(s))
+            gdf['color'] = gdf["sat"].apply(lambda s : cmap(s))
             world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     
             start = min(x[0] for x in df['time'])
@@ -347,7 +345,7 @@ else:
             dates = extractDates(df["time"])
     
             fig,ax = plt.subplots()
-            xyz,minP,maxP,N = constellation.statsCoordonnees()
+            xyz,minP,maxP,N = constellation.statsCoordinates()
             Xlim = (minP[1]-10,maxP[1]+10)
             Ylim = (minP[0]-10,maxP[0]+10)
             
@@ -359,12 +357,12 @@ else:
     def drawObsDurations(file,constellation):
         if MPI.COMM_WORLD.Get_rank()==0:
             durees = {}
-            for r in constellation.getRequetes():
-                type_req = constellation.getRequete(r).getType()
+            for r in constellation.getRequests():
+                type_req = constellation.getRequest(r).getType()
                 if type_req not in durees:
                     durees[type_req] = []
-                for (s,a) in constellation.getRequete(r).getCouples():
-                    duree = constellation.getSatellite(s).getActivite(a).getDuree()
+                for (s,a) in constellation.getRequest(r).getPairs():
+                    duree = constellation.getSatellite(s).getActivity(a).getDuration()
                     durees[type_req].append(duree)
             nAxis = len(list(durees.keys()))
             f,axs = plt.subplots(nrows=nAxis)
@@ -411,14 +409,14 @@ else:
         
     def initVisualisation():    
         choix = {}
-        choix["afficher la carte des cibles au sol"] = lambda f,c : drawTargetsMap(f,c,details=False)
-        choix["afficher la carte des cibles au sol (détails en couleur)"] = lambda f,c : drawTargetsMap(f,c,details=True)
-        choix["afficher la carte des composantes connexes (/!\ lent)"] = drawCCAs
-        choix["afficher les scores des observations (/!\ lent)"] = drawScoreMap
-        choix["afficher les durées des activités"] = drawObsDurations
+        choix["display targets map"] = lambda f,c : drawTargetsMap(f,c,details=False)
+        choix["display targets map (colored)"] = lambda f,c : drawTargetsMap(f,c,details=True)
+        choix["display connected components (/!\ slow)"] = drawCCAs
+        #choix["display observation scores (/!\ slow)"] = drawScoreMap
+        choix["display activities duration"] = drawObsDurations
         if config.isDataTimeDependent():
-            choix["afficher les durées de transition"] = drawTransition
-        choix["retour"] = None
+            choix["display transition durations"] = drawTransition
+        choix["cancel"] = None
 
         
         rank = MPI.COMM_WORLD.Get_rank()
@@ -430,7 +428,7 @@ else:
             else:
                 data = None
                 data = MPI.COMM_WORLD.bcast(data,root=0)
-                file = data['files'][0]
+                file = data['file']
                 constellation = Constellation(file,False)
                 MPI.COMM_WORLD.Barrier()
             choisirEtExecuterOption(file,constellation,choix)

@@ -13,14 +13,14 @@ from functools import reduce
 import itertools
 from operator import itemgetter
 
-"""
+
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as patches
 import matplotlib
-"""
+
 
 from copy import copy
 from copy import deepcopy
@@ -1849,17 +1849,17 @@ class Constellation:
                         assert(s==self.getSatelliteActivity(a))
         
         if display:
-            printColor("Reading OK.\n",c='g')
+            printMaster("Reading OK.\n",c='g')
             xyz,minCoord,maxCoord,nPoints = self.statsCoordinates()
             shift = getDisplayDepth()-1
             shiftLeftDisplay(shift)
-            printColor("====================== [ System summary ] ======================",c='y')
-            printColor("| Requests:",str(len(list(self.requests.keys()))),c='y')
-            printColor("| Observations:",str(nPoints),c='y')
-            printColor("| Latitude range: [",minCoord[0],",",maxCoord[0],"]",c='y')
-            printColor("| Longitude range: [",minCoord[1],",",maxCoord[1],"]",c='y')
-            printColor("| Mean target:",(xyz[0],xyz[1]),c='y')
-            printColor("================================================================",c='y')
+            printMaster("====================== [ System summary ] ======================",c='y')
+            printMaster("| Requests:",str(len(list(self.requests.keys()))),c='y')
+            printMaster("| Observations:",str(nPoints),c='y')
+            printMaster("| Latitude range: [",minCoord[0],",",maxCoord[0],"]",c='y')
+            printMaster("| Longitude range: [",minCoord[1],",",maxCoord[1],"]",c='y')
+            printMaster("| Mean target:",(xyz[0],xyz[1]),c='y')
+            printMaster("================================================================",c='y')
             shiftRightDisplay(shift)
         if config.getOptValue("dynamic"):
             minuteLastRequests=config.getOptValue("derniere_requete")
@@ -2000,7 +2000,7 @@ class Constellation:
                         GRAPHIQUES
         =========================================================  
     """
-    """
+
     def plotModesLosses(self):
         return self.solution.plotModesLosses()
     
@@ -2104,4 +2104,4 @@ class Constellation:
     def plotLoad(self,annoter=False):
         f = self.solution.tracerActivite(annoter)
         return f
-    """
+    
