@@ -127,7 +127,7 @@ La commande renverra un texte similaire au texte suivant :
         -s || --seed : Graine aléatoire.
         --include_systematic : Inclure les requêtes systématiques.
 
-    *globalSolver*:
+    *CPSolver*:
         --sample : Indiquer un chemin pour sauvegarder les résultats.
         -v || --verbose : Indiquer le niveau d'affichage.
         -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
