@@ -1,4 +1,5 @@
 **REMARQUES GENERALES**
+
 Ce projet contient les algorithmes développés à l'Onera dans le cadre de la thèse de Samuel Squillaci (https://theses.fr/2023ESAE0071), présentant les méthodes publiées notamment dans les articles suivants :
 
 - Squillaci, Samuel et Roussel, Stéphanie et Pralet, Cédric : «Parallel Scheduling of Complex Requests  for a Constellation of Earth Observing Satellites». Dans : Passerini, A., Schiex, T. (eds.). Frontiers in Artificial Intelligence and Applications. IOS Press 2022.
@@ -16,6 +17,7 @@ L'intégralité des algorithmes sont regroupés au sein d'un projet Python prés
 Pralet, C.: Iterated maximum large neighborhood search for the traveling salesman problem with time windows and its time-dependent version. Computers & Operations Research 150 (2022)
 
 **ENVIRONNEMENT**
+
 si conda n'est pas installé, installer conda
 sur linux, miniconda peut s'installer de la manière suivante :
     mkdir -p ~/miniconda3
@@ -42,7 +44,8 @@ Exécuter via l'executable : mpiexec -n <Ncoeurs> <nom de l'exe> -v <indice de v
 
 /!\ exécuter le code depuis un autre répertoire ne fonctionne pas. Python utilise le répertoire courant comme référence pour les chemins relatifs, et non le répertoire des sources.
 
-**OPTIONS DISPONIBLES**
+**UTILISATION**
+
 Pour connaître les options, tapez "python3 main.py -v 1 -h" ou "python3 main.py -v 1 --help"
 
 La commande renverra un texte similaire au texte suivant :
