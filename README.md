@@ -59,7 +59,7 @@ Pensez à :
 
 **UTILISATION**
 
-Pour connaître les options disponibles, tapez "python3 main.py -v 1 -h" ou "python3 main.py --solver=<algo> -v 1 --help".
+Pour connaître les options disponibles, tapez "python3 main.py --solver=<algo> -v 1 -h" ou "python3 main.py --solver=<algo> -v 1 --help".
 La commande renverra un texte similaire au texte suivant, listant les options disponibles POUR L'ALGORITHME INDIQUE PAR --solver=... :
 
     --sample : Indiquer un chemin pour sauvegarder les résultats.
