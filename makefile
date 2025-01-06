@@ -11,6 +11,13 @@ clean:
 	cd $(TOURS);if(($(ls|wc -l) >0)); then  rm * ;fi
 	cd $(PAR);if(($(ls|wc -l) >0)); then  rm * ;fi
 	cd $(INIT);if(($(ls|wc -l) >0)); then  rm * ;fi
+download_lkh:
+	rm -rf LKH-3.0.13.tgz
+	rm -r $(LKH_SOURCES)
+	wget http://akira.ruc.dk/~keld/research/LKH-3/LKH-3.0.13.tgz
+	tar -zxvf  LKH-3.0.13.tgz
+	mv LKH-3.0.13 $(LKH_SOURCES)
+	rm -r LKH-3.0.13.tgz
 all:
 	cd $(LKH_SOURCES); make all;
 	cp $(LKH_SOURCES)/LKH $(LKH_TARGET)/LKH; 
