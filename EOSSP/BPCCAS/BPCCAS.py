@@ -392,8 +392,8 @@ else:
                     del mappingObs[idCCA]
                 for x in modesToDelete:
                     self.removeSelectedMode(x)
-                printColor("Recycling "+str(keptActivities)+" activities "+str(keptModes)+" partial modes and "+str(len(keptCCAs))+" CCAs",c='y')
-                printColor("Rejecting "+str(rejectedActivities)+" activities "+str(rejectedModes)+" partial modes",c='y')
+                #printColor("Recycling "+str(keptActivities)+" activities "+str(keptModes)+" partial modes and "+str(len(keptCCAs))+" CCAs",c='y')
+                #printColor("Rejecting "+str(rejectedActivities)+" activities "+str(rejectedModes)+" partial modes",c='y')
                 return mappingObs,ccaSequences
             
         def dispatchWorkToSlaves(self,mappingObs,ccaSequences):

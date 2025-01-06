@@ -9,6 +9,8 @@ from time import *
 import math
 from os.path import exists
 
+EXTERNAL_SOLVERS_ROOT = "../solvers/"
+
 class InfeasibleSolutionfromSolverException(Exception):
     pass
 
@@ -878,20 +880,20 @@ class SolCCA:
     # Ecrire le fichier de parametre pour LKH
     def writeParameterFileLKH(self):
         name = self.last_call_lkh+".par"
-        folder = "../LKH3/TSPTW/PAR/"
+        folder = EXTERNAL_SOLVERS_ROOT + "LKH/PAR/"
         with open(folder+name,'w') as file:
             file.write("SPECIAL\n")
-            file.write("PROBLEM_FILE = INSTANCES/eosm/"+self.last_call_lkh+".tsptw\n")
+            file.write("PROBLEM_FILE = INSTANCES/"+self.last_call_lkh+".tsptw\n")
             file.write("MAX_TRIALS = "  + str(config.lkh.max_trials)+'\n')
             file.write("RUNS = " + str(config.lkh.runs)+'\n')
             file.write("TRACE_LEVEL = 0\n")
             #file.write("STOP_AT_OPTIMUM = YES\n")
-            file.write("OUTPUT_TOUR_FILE = TOURS/eosm/"+self.last_call_lkh+".tour\n")
+            file.write("OUTPUT_TOUR_FILE = TOURS/"+self.last_call_lkh+".tour\n")
             file.write("INITIAL_TOUR_FILE = INIT/"+self.last_call_lkh+".init\n")
             
     # Ecrire le fichier de solution initiale pour LKH
     def writeInitialTourFile(self,sequence):
-        folder = "../LKH3/TSPTW/INIT/"
+        folder = EXTERNAL_SOLVERS_ROOT+"LKH/INIT/"
         #print(folder+self.last_call_lkh+".init\n")
         with open(folder+self.last_call_lkh+".init",'w') as file:
             file.write('NAME :'+self.last_call_lkh+".init\n")
@@ -919,7 +921,7 @@ class SolCCA:
         mapping_id = {}
         sequence = [-1] + seq
         name = config.getOptValue("solver") + "_" + str(rank) + "_" + socket.gethostname() + '_sat_' + str(self.satellite) + '_cca_' + str(self.identifier)
-        folder = "../LKH3/TSPTW/INSTANCES/eosm/"
+        folder = EXTERNAL_SOLVERS_ROOT+"LKH/INSTANCES/"
         
         with open(folder + name + '.tsptw','w') as file:
             sequenceLength = len(sequence)
@@ -960,8 +962,8 @@ class SolCCA:
         self.writeInitialTourFile(seq)
         
     def execLKH(self):
-        goDir = "cd ../LKH3/TSPTW ; "
-        cmd = goDir + "../LKH PAR/" + self.last_call_lkh + ".par"
+        goDir = "cd "+ EXTERNAL_SOLVERS_ROOT + "LKH ; "
+        cmd = goDir + "./LKH PAR/" + self.last_call_lkh + ".par"
         p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         for line in p.stdout.readlines():
             print(line)
@@ -969,23 +971,23 @@ class SolCCA:
  
     def cleanFolderLKH(self):
         try:
-            folder_instance = "../LKH3/TSPTW/INSTANCES/eosm/"
+            folder_instance = EXTERNAL_SOLVERS_ROOT+"LKH/INSTANCES/"
             os.unlink(folder_instance+self.last_call_lkh+".tsptw")
         except FileNotFoundError:
             pass
         try:
             #for tour in [filename for filename in os.listdir("../LKH3/TSPTW/TOURS/eosm/") if filename.startswith(self.last_call_lkh)]:
-                folder_tour = "../LKH3/TSPTW/TOURS/eosm/"
+                folder_tour = EXTERNAL_SOLVERS_ROOT+"LKH/TOURS/"
                 os.unlink(folder_tour+self.last_call_lkh+'.tour')
         except FileNotFoundError:
             pass
         try:
-            folder_tour = "../LKH3/TSPTW/PAR/"
+            folder_tour = EXTERNAL_SOLVERS_ROOT+"LKH/PAR/"
             os.unlink(folder_tour+self.last_call_lkh+'.par')
         except FileNotFoundError:
             pass
         try:
-            folder_tour = "../LKH3/TSPTW/INIT/"
+            folder_tour = EXTERNAL_SOLVERS_ROOT+"LKH/INIT/"
             os.unlink(folder_tour+self.last_call_lkh+'.init')
         except FileNotFoundError:
             pass
@@ -996,7 +998,7 @@ class SolCCA:
             sequence = []
             name = self.last_call_lkh
             mapping = self.mapping_id_lkh
-            file = "../LKH3/TSPTW/TOURS/eosm/"+name+".tour"
+            file = EXTERNAL_SOLVERS_ROOT+"LKH/TOURS/"+name+".tour"
             if not exists(file):
                 return None
             with open(file,'r') as file:
@@ -1022,7 +1024,7 @@ class SolCCA:
             sequence = []
             name = self.last_call_lkh
             mapping = self.mapping_id_lkh
-            prefixed = [filename for filename in os.listdir("../LKH3/TSPTW/TOURS/eosm/") if filename.startswith(name)]
+            prefixed = [filename for filename in os.listdir(EXTERNAL_SOLVERS_ROOT+"LKH/TOURS/") if filename.startswith(name)]
             if len(prefixed)==0:
                 return None
             best = None
@@ -1033,7 +1035,7 @@ class SolCCA:
                     obj=tour
                     best = filename
             print("Failure while reading the result",best)
-            with open("../LKH3/TSPTW/TOURS/eosm/"+best,'r') as file:
+            with open(EXTERNAL_SOLVERS_ROOT+"LKH/TOURS/"+best,'r') as file:
                 lines = file.read().splitlines()
                 i = 0
                 while int(lines[i])>0: #-1 -> fin du fichier

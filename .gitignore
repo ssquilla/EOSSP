@@ -4,7 +4,8 @@
 **/*.init
 **/*.par
 **/*.tour
-git ignore EOSSP/EOSSP/build
-git EOSSP/EOSSP/dist
-
+EOSSP/EOSSP/build
+EOSSP/EOSSP/dist
+LKH3/
+solvers/LKH/LKH
 
