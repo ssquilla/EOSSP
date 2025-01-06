@@ -35,6 +35,11 @@ Mettre en place l'environnement conda :
     conda activate EOSSP
     conda install python=3.6
 
+Mettre en place le solver externe LKH :
+
+    make download_lkh
+    make all
+
 L'environnement conda doit être activé à chaque redémarrage du pc, mais pas nécessairement recréé.
 
 **NOTICE DES ALGO**
