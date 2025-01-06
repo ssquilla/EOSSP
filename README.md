@@ -59,100 +59,25 @@ Pensez à :
 
 **UTILISATION**
 
-Pour connaître les options disponibles, tapez "python3 main.py -v 1 -h" ou "python3 main.py -v 1 --help".
-La commande renverra un texte similaire au texte suivant :
+Pour connaître les options disponibles, tapez "python3 main.py -v 1 -h" ou "python3 main.py --solver=<algo> -v 1 --help".
+La commande renverra un texte similaire au texte suivant, listant les options disponibles POUR L'ALGORITHME INDIQUE PAR --solver=... :
 
-    *dataVisu*
-        -v || --verbose : Indiquer le niveau d'affichage.
-        -h || --help : Afficher l'aide.
-        -f || --folder : Indiquer le dossier de l'instance.
-        -n || --file : Indiquer le fichier de l'instance.
-        -s || --seed : Graine aléatoire.
-        --include_systematic : Inclure les requêtes systématiques.
+    --sample : Indiquer un chemin pour sauvegarder les résultats.
+    -v || --verbose : Indiquer le niveau d'affichage.
+    -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
+    -l || --light_sample : Activer pour alléger la quantité d'information sauvegardée.
+    -t || --time : Indiquer le temps d'execution (en minutes).
+    -m || --modes : Indiquer le nombre de modes considérés par requêtes.
+    -w || --threads : Indiquer le nombre de threads travailleurs.
+    -h || --help : Afficher l'aide.
+    -c || --comm : Ajouter un commentaire à l'échantillon de résultats.
+    -f || --folder : Indiquer le dossier de l'instance.
+    -n || --file : Indiquer le fichier de l'instance.
+    -s || --seed : Graine aléatoire.
+    --include_systematic : Inclure les requêtes systématiques.
 
+/!\ Un niveau de verbosité non nul doit être indiqué afin d'afficher les informations dans la console au cours de l'éxécution ( -v <niveau de verbosité>). Par défaut, l'indice est nul. Par défaut, les requêtes systématiques ne sont pas prises en compte. Les inclure à l'aide de l'option "--include_systematic".
 
-    *LNS*
-        --sample : Indiquer un chemin pour sauvegarder les résultats.
-        -v || --verbose : Indiquer le niveau d'affichage.
-        -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
-        -l || --light_sample : Activer pour alléger la quantité d'information sauvegardée.
-        -t || --time : Indiquer le temps d'execution (en minutes).
-        -k || --n_cca : Nombre de CCA considérées dans le voisinnage (version LNS avec CP).
-        -u || --use_solver : Activer pour activer le solver à chaque insertion temporaire (mode glouton).
-        --quota_requests : Nombre de requêtes à détruire au maximum (LNS hybride).
-        --nbh : Mode de séléction des CCAs durant la recherche locale.
-        --version : Choix de la version du LNS.
-        --time_insert : Temps de temps maximum passé à l'insertion d'un modes (s). (Mode glouton)
-        --tries_insert : Nombre d'insertions maximum considérés à l'étape d'insertion. (Mode glouton)
-        -i || --stableIt : Nombre d'itération stable avant perturbation durant la recherche locale.
-        --max_operateur : Nombre maximum d'appels de l'opérateur.
-        --max_iteration : Nombre d'itérations maximum.
-        --CPLim : Temps alloué au solver CP (version LNS avec CP).
-        --max_echecs : Nombre d'echecs maximum du glouton.
-        -d || --destroy : Amplitude de destruction (itération stochastique).
-        -h || --help : Afficher l'aide.
-        -c || --comm : Ajouter un commentaire à l'échantillon de résultats.
-        -f || --folder : Indiquer le dossier de l'instance.
-        -n || --file : Indiquer le fichier de l'instance.
-        -s || --seed : Graine aléatoire.
-        --include_systematic : Inclure les requêtes systématiques.
-
-
-    *PCCAS*:
-        *Unit PCCAS*:            
-        --cpu : Activer pour créer le graphique de charge de coeurs.
-        --sample : Indiquer un chemin pour sauvegarder les résultats.
-        -v || --verbose : Indiquer le niveau d'affichage.
-        -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
-        -l || --light_sample : Activer pour alléger la quantité d'information sauvegardée.
-        -t || --time : Indiquer le temps d'execution (en secondes).
-        --preval : Mode prévalidation : transfère les activités déjà validées d'un nouveau mode (celles du mode précédent). Courcircuite potentiellement le rang de scores.
-        -a || --anticipation : Anticipe la planification d'un mode moins bien classé si ceux mieux classés sont déjà planifiés sur la CCA en question.
-        --noise : Amplitude du bruit (itération stochastique).
-        -h || --help : Afficher l'aide.
-        -c || --comm : Ajouter un commentaire à l'échantillon de résultats.
-        -f || --folder : Indiquer le dossier de l'instance.
-        -n || --file : Indiquer le fichier de l'instance.
-        -s || --seed : Graine aléatoire.
-        --include_systematic : Inclure les requêtes systématiques.
-
-        *Batch PCCAS*:
-        --cpu : Activer pour créer le graphique de charge de coeurs.
-        --sample : Indiquer un chemin pour sauvegarder les résultats.
-        -v || --verbose : Indiquer le niveau d'affichage.
-        -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
-        -l || --light_sample : Activer pour alléger la quantité d'information sauvegardée.
-        -t || --time : Indiquer le temps d'execution (en minutes).
-        --conserve : Mode conservation du BPCCAS (lent) : conserve les modes validées même s'ils perdent en rang (score).
-        --stable_exp : Mode stable explication (lent) : rejette un mode avec explication seulement si aucune autre requête mieux classé et non explorée existe.
-        --fails : Nombre d'éches consecutifs maximum pour l'appel au solver sur un coeur.
-        --scalls : Nombre d'appels au solver maximum sur un coeur.
-        --noise : Amplitude du bruit (itération stochastique).
-        -d || --destroy_BPCCAS : Amplitude de destruction (itération stochastique).
-        -h || --help : Afficher l'aide.
-        -c || --comm : Ajouter un commentaire à l'échantillon de résultats.
-        -f || --folder : Indiquer le dossier de l'instance.
-        -n || --file : Indiquer le fichier de l'instance.
-        -s || --seed : Graine aléatoire.
-        --include_systematic : Inclure les requêtes systématiques.
-
-    *CPSolver*:
-        --sample : Indiquer un chemin pour sauvegarder les résultats.
-        -v || --verbose : Indiquer le niveau d'affichage.
-        -o || --verif : Activer pour effectuer des vérifications en cours d'execution (plus lent, plus sûr).
-        -l || --light_sample : Activer pour alléger la quantité d'information sauvegardée.
-        -t || --time : Indiquer le temps d'execution (en minutes).
-        -m || --modes : Indiquer le nombre de modes considérés par requêtes.
-        -w || --threads : Indiquer le nombre de threads travailleurs.
-        -h || --help : Afficher l'aide.
-        -c || --comm : Ajouter un commentaire à l'échantillon de résultats.
-        -f || --folder : Indiquer le dossier de l'instance.
-        -n || --file : Indiquer le fichier de l'instance.
-        -s || --seed : Graine aléatoire.
-        --include_systematic : Inclure les requêtes systématiques.
-
-/!\ Un niveau de verbosité non nul doit être indiqué afin d'afficher les informations dans la console au cours de l'éxécution ( -v <niveau de verbosité>). Par défaut, l'indice est nul.
-        
 **SAUVEGARDE DES DONNEES**
 
 La sauvegarde des données peut se faire à l'aide de l'option "--sample=<nom du dossier cible>" qui va créé un dossier si nécessaire et fabriquer un pickle Python dans celui-ci. Les résultats peuvent être analysés à partir du notebook "analyse_resultats", ou simplement à l'aide de la bibliothèque python "pickle" depuis un script python.
